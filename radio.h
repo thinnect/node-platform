@@ -7,8 +7,8 @@
 
 #define RADIO_CALLBACK_COUNT 8
 
-comms_layer_am_t radio_iface;
-uint16_t radio_address;
+extern comms_layer_am_t radio_iface;
+extern uint16_t radio_address;
 
 struct radio_callback_struct{
 	uint8_t am_id;
