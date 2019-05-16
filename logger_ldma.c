@@ -27,12 +27,15 @@
 
 static uint8_t buf[LOGGER_LDMA_BUFFER_LENGTH];
 
-static bool ldmaDone = false;
+static volatile bool ldmaDone = false; // Only interrupt communications
+
 osTimerId_t ldmaTimer;
+static bool ldmaReady = false;
 
 static uint16_t bufStart = 0;
 static uint16_t bufEnd = 0;
 static uint16_t bufPos = 0;
+static bool bufFull = false;
 
 static osMutexId_t log_mutex;
 
@@ -51,24 +54,22 @@ static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ld
 static void ldmaStart(void) {
 	uint16_t length = 0;
 
-	bufStart = bufPos;
-	if (bufStart >= LOGGER_LDMA_BUFFER_LENGTH) {
-		bufStart = 0;
-	}
-	if (bufEnd >= LOGGER_LDMA_BUFFER_LENGTH) {
-		bufEnd = 0;
-	}
-
 	if (bufEnd < bufStart) {
-		bufPos = 0;
 		length = LOGGER_LDMA_BUFFER_LENGTH-bufStart;
 	} else if (bufEnd > bufStart) {
-		bufPos = bufEnd;
-		length = bufPos-bufStart;
+		length = bufEnd-bufStart;
+	}
+	if(length > 512) {
+		length = 512;
+	}
+	bufPos = bufStart+length;
+	if(bufPos >= LOGGER_LDMA_BUFFER_LENGTH) {
+		bufPos = 0;
 	}
 
 	if (length > 0) {
 		ldmaDone = false;
+		ldmaReady = false;
 		osTimerStart(ldmaTimer, 1 + length/10); // TODO timer based on baudrate - currently assumes 10 bytes per millisecond
 
 		#ifdef LOGGER_LDMA_UART0
@@ -109,11 +110,20 @@ void LDMA_IRQHandler(void) {
 
 static void ldma_timer_callback(void* argument) {
 	while (osMutexAcquire(log_mutex, 1000) != osOK);
+
 	if (ldmaDone) {
+		bufFull = false;
+		ldmaReady = true;
+		bufStart = bufPos;
+		if ((bufStart >= LOGGER_LDMA_BUFFER_LENGTH)
+		  ||(bufEnd >= LOGGER_LDMA_BUFFER_LENGTH)) {
+			while(1); // panic
+		}
 		ldmaStart();
 	} else {
-		osTimerStart(ldmaTimer, 10);
+		osTimerStart(ldmaTimer, 5);
 	}
+
 	if (osMutexRelease(log_mutex) != osOK) {
 		while (1);  // panic
 	}
@@ -122,13 +132,29 @@ static void ldma_timer_callback(void* argument) {
 
 int logger_ldma_init() {
 	log_mutex = osMutexNew(NULL);
-	ldmaDone = true;
 	ldmaTimer = osTimerNew(&ldma_timer_callback, osTimerOnce, NULL, NULL);
 
 	LDMA_Init_t initLdma = LDMA_INIT_DEFAULT;
 	LDMA_Init(&initLdma);
 
+	ldmaDone = true;
+	ldmaReady = true;
 	return 0;
+}
+
+
+static void logger_append_data(const char* ptr, int len) {
+	if ((bufEnd + len) > LOGGER_LDMA_BUFFER_LENGTH) {
+		uint16_t pol = LOGGER_LDMA_BUFFER_LENGTH - bufEnd;
+		memcpy(&buf[bufEnd], ptr, pol);
+		memcpy(&buf[0], ptr + pol, len - pol);
+	} else {
+		memcpy(&buf[bufEnd], ptr, len);
+	}
+	bufEnd += len;
+	if (bufEnd >= LOGGER_LDMA_BUFFER_LENGTH) {
+		bufEnd -= LOGGER_LDMA_BUFFER_LENGTH;
+	}
 }
 
 
@@ -137,33 +163,25 @@ int logger_ldma(const char *ptr, int len) {
 
 	while (osMutexAcquire(log_mutex, 1000) != osOK);
 
-	space = bufStart - bufEnd;
+	if (bufFull == false) {
+		space = bufStart - bufEnd;
 
-	if (bufStart <= bufEnd) {
-		space += LOGGER_LDMA_BUFFER_LENGTH;
-		if (len > space) {
-			len = space;
+		if (bufStart <= bufEnd) {
+			space += LOGGER_LDMA_BUFFER_LENGTH;
 		}
-		if ((len + bufEnd) > LOGGER_LDMA_BUFFER_LENGTH) {
-			memcpy(&buf[bufEnd], ptr, LOGGER_LDMA_BUFFER_LENGTH-bufEnd);
-			memcpy(&buf[0], ptr + LOGGER_LDMA_BUFFER_LENGTH-bufEnd, len - (LOGGER_LDMA_BUFFER_LENGTH - bufEnd));
-		} else {
-			memcpy(&buf[bufEnd], ptr, len);
+		if (len >= space - 6) {
+			len = space - 6;
+			bufFull = true;
 		}
-	} else {
-		if (len > space) {
-			len = space;
-		}
-		memcpy(&buf[bufEnd], ptr, len);
-	}
+		logger_append_data(ptr, len);
 
-	bufEnd = bufEnd + len;
-	if (bufEnd > LOGGER_LDMA_BUFFER_LENGTH) {
-		bufEnd = bufEnd - LOGGER_LDMA_BUFFER_LENGTH;
-	}
+		if (bufFull) {
+			logger_append_data("\nfull\n", 6);
+		}
 
-	if (ldmaDone) {
-		ldmaStart();
+		if (ldmaReady) {
+			ldmaStart();
+		}
 	}
 
 	if (osMutexRelease(log_mutex) != osOK) {
