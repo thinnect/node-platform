@@ -75,7 +75,7 @@ void spi_cs(uint8_t active){
 	}
 }
 
-int RETARGET_SpiTransfer(int cs, const void *out, int32_t out_len, void *in, int32_t in_len){
+int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in, int32_t in_len){
 	int32_t i;
 	if((cs != 0) || (out_len < 0) || (in_len < 0))return(-1);
 	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
