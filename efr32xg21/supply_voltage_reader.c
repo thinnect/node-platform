@@ -11,6 +11,11 @@
 
 #include <stdio.h>
 
+#include "loglevels.h"
+#define __MODUUL__ "svr"
+#define __LOG_LEVEL__ (LOG_LEVEL_supply_voltage_reader & BASE_LOG_LEVEL)
+#include "log.h"
+
 // Set HFRCOEM23 to lowest frequency (1MHz)
 #define HFRCOEM23_FREQ          cmuHFRCOEM23Freq_1M0Hz
 
@@ -71,7 +76,7 @@ void SupplyVoltageReader_init() {
     // Initialize Scan
     IADC_initSingle(IADC0, &initSingle, &initSingleInput);
 
-    printf("pop %lX\n", IADC0->SINGLE);
+    debug1("pop %lX", IADC0->SINGLE);
 }
 
 int16_t SupplyVoltageReader_read() {
@@ -84,19 +89,19 @@ int16_t SupplyVoltageReader_read() {
         IADC_command(IADC0, iadcCmdStartSingle);
 
         status = IADC0->STATUS;
-        printf("start %lX\n", status);
+        debug1("start %lX", status);
         while(!(status & _IADC_STATUS_SINGLEFIFODV_MASK) && (count++ <= 1000000)) {
             count++;
             status = IADC0->STATUS;
-            //printf("converting %lX\n", status);
+            //debug1("converting %lX", status);
         }
 
         if(count > 1000000) {
-            printf("failed %"PRIu32"\n", count);
+            err1("failed %"PRIu32"", count);
             return 0;
         } else {
             IADC_Result_t sample = IADC_pullSingleFifoResult(IADC0);
-            printf("smpl %lu %u\n", sample.data, sample.id);
+            debug1("smpl %lu %u", sample.data, sample.id);
             avg += sample.data;
             num++;
         }
