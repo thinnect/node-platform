@@ -20,23 +20,27 @@
 #include "log.h"
 
 uint16_t radio_address;
+static uint16_t radio_pan_id;
+static uint16_t radio_channel;
 comms_layer_am_t radio_iface;
 
-static uint8_t radio_sending;
+static bool radio_sending;
 
-static uint16_t radio_channel;
 static uint8_t radio_tx_num;
 static RAIL_Handle_t radio_rail_handle;
-static Queue_t radio_rx_packet_queue;
+volatile bool rx_packet_ready = false;
+
 static volatile RAIL_RxPacketHandle_t radio_rx_packet_handle;
 static void *radio_user;
 static comms_msg_t *radio_msg;
-static volatile int radio_send_done_flag;
-static volatile int radio_send_busy = 0;
-static volatile int radio_send_fail = 0;
-static volatile int rx_fail = 0;
-volatile bool rx_packet_ready = false;
 
+static volatile bool radio_send_done_flag;
+static volatile bool radio_send_busy;
+static volatile bool radio_send_fail;
+static volatile uint8_t rx_fail;
+static volatile bool radio_restart;
+
+static RAIL_Handle_t radio_rail_init();
 static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events);
 static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry);
 static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle);
@@ -44,6 +48,23 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 static comms_send_done_f *radio_send_done;
 
 comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
+	radio_channel = channel;
+	radio_pan_id = pan_id;
+	radio_address = address;
+	radio_tx_num = 0;
+
+	radio_rail_handle = radio_rail_init();
+	if(radio_rail_handle != NULL) {
+		comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send);
+		return (comms_layer_t *)&radio_iface;
+	}
+	err1("rail_init");
+	return(NULL);
+}
+
+RAIL_Handle_t radio_rail_init() {
+	RAIL_Handle_t handle;
+
 	static RAIL_Config_t rail_config = {
 		.eventsCallback = &radio_rail_event_cb
 	};
@@ -83,15 +104,26 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
 	RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
 
-	radio_channel = channel;
-	radio_address = address;
-	radio_tx_num = 1;
-	radio_rx_packet_handle = RAIL_RX_PACKET_HANDLE_INVALID;
-	radio_sending = 0;
-	radio_send_done_flag = 0;
+	radio_restart = false;
+	radio_send_done_flag = false;
+	radio_send_busy = false;
+	radio_send_fail = false;
+	rx_fail = 0;
 
-	radio_rail_handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
-	if(radio_rail_handle == NULL) {
+	int32_t priority = 3; // not shifted, but once shifted = 01100000
+	NVIC_SetPriority(FRC_PRI_IRQn, priority);
+	NVIC_SetPriority(FRC_IRQn, priority);
+	NVIC_SetPriority(MODEM_IRQn, priority);
+	NVIC_SetPriority(RAC_SEQ_IRQn, priority);
+	NVIC_SetPriority(RAC_RSM_IRQn, priority);
+	NVIC_SetPriority(BUFC_IRQn, priority);
+	NVIC_SetPriority(AGC_IRQn, priority);
+	NVIC_SetPriority(PROTIMER_IRQn, priority);
+	NVIC_SetPriority(SYNTH_IRQn, priority);
+	NVIC_SetPriority(RFSENSE_IRQn, priority);
+
+	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
+	if(handle == NULL) {
 		// printf("RAIL INIT ERROR\n");
 		return(NULL);
 	}
@@ -102,6 +134,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 
 	// In the Silicon Labs implementation, the user is required to save those curves into
 	// to be referenced when the conversion functions are called
+	//RAIL_InitTxPowerCurves(&txPowerCurvesConfig);
 	RAIL_InitTxPowerCurvesAlt(&txPowerCurvesConfig);
 
 	RAIL_EnablePaCal(1);
@@ -110,49 +143,48 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	//RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 1800, 10 };
 	RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 3300, 10 };
 
-	if(RAIL_ConfigTxPower(radio_rail_handle, &txPowerConfig) != RAIL_STATUS_NO_ERROR) {
+	if(RAIL_ConfigTxPower(handle, &txPowerConfig) != RAIL_STATUS_NO_ERROR) {
 		// printf("TX POWER CONF ERROR\n");
 		// Error: The PA could not be initialized due to an improper configuration.
 		// Please ensure your configuration is valid for the selected part.
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = 170; // 17dBm
+	RAIL_TxPower_t power = 170; // Testsystem power: -13dBm
 	RAIL_GetTxPowerConfig(radio_rail_handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(radio_rail_handle, txPowerConfig.mode, power);
 
-	RAIL_SetTxPower(radio_rail_handle, powerLevel);
+	RAIL_SetTxPower(handle, powerLevel);
 
-  	// Initialize Radio Calibrations
-  	RAIL_ConfigCal(radio_rail_handle, RAIL_CAL_ALL);
+	// Initialize Radio Calibrations
+	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
 	// Load the channel configuration for the generated radio settings
-  	//RAIL_ConfigChannels(radio_rail_handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
-  	(void)radio_rail_radio_config_changed_cb;
+	RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
 
-  	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
-                 | RAIL_EVENT_RX_ACK_TIMEOUT
-                 | RAIL_EVENTS_RX_COMPLETION
-				 | RAIL_EVENTS_TX_COMPLETION;
+	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
+	             | RAIL_EVENT_RX_ACK_TIMEOUT
+	             | RAIL_EVENTS_TX_COMPLETION
+	             | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
+	             ;
+	//           | RAIL_EVENTS_RX_COMPLETION
 
-	RAIL_ConfigEvents(radio_rail_handle, RAIL_EVENTS_ALL, events);
-	// RAIL_ConfigEvents(radio_rail_handle, RAIL_EVENTS_ALL, RAIL_EVENTS_ALL);
+	RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
+	// RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, RAIL_EVENTS_ALL);
 
-	if(!queueInit(&radio_rx_packet_queue, MAX_QUEUE_LENGTH)) {
-		return(NULL);
+	radio_sending = false;
+	RAIL_ConfigData(handle, &data_config);
+
+	RAIL_IEEE802154_Config2p4GHzRadio(handle);
+	RAIL_IEEE802154_Init(handle, &ieee802154_config);
+	RAIL_IEEE802154_SetPanId(handle, radio_pan_id, 0);
+	RAIL_IEEE802154_SetShortAddress(handle, radio_address, 0);
+
+	RAIL_Idle(handle, RAIL_IDLE, 1);
+	if(RAIL_StartRx(handle, radio_channel, NULL) != RAIL_STATUS_NO_ERROR) {
+		err1("StartRx");
 	}
-	RAIL_ConfigData(radio_rail_handle, &data_config);
-
-	RAIL_IEEE802154_Config2p4GHzRadio(radio_rail_handle);
-	RAIL_IEEE802154_Init(radio_rail_handle, &ieee802154_config);
-	RAIL_IEEE802154_SetPanId(radio_rail_handle, pan_id, 0);
-	RAIL_IEEE802154_SetShortAddress(radio_rail_handle, radio_address, 0);
-
-	RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
-	RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
-
-	comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send); //provide signodeid
-	return (comms_layer_t *)&radio_iface;
+	return handle;
 }
 
 void radio_idle() {
@@ -165,6 +197,7 @@ void radio_reenable() {
 
 void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id) {
 	radio_channel = channel;
+	radio_pan_id = pan_id;
 	RAIL_IEEE802154_SetPanId(radio_rail_handle, pan_id, 0);
 	RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 }
@@ -204,7 +237,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
   	e = RAIL_StartCcaCsmaTx(radio_rail_handle, radio_channel, 0, &csmaConf, NULL);
 	debug1("snd e: %i", e);
 	if(e == RAIL_STATUS_NO_ERROR) {
-		radio_sending = 1;
+		radio_sending = true;
 		err = COMMS_SUCCESS;
 	}else{
 		RAIL_Idle(radio_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
@@ -222,6 +255,19 @@ void radio_poll() {
 	RAIL_Status_t rx_status;
 	RAIL_RxPacketInfo_t packetInfo;
 	RAIL_RxPacketDetails_t packetDetails;
+
+	if(radio_restart == true) {
+		warn1("restart");
+		radio_rail_handle = radio_rail_init();
+		if(radio_rail_handle == NULL) {
+			__ASM volatile("cpsid i" : : : "memory");
+			while(1);
+		}
+		if(radio_sending) { // If sending, cancel and notify user
+			radio_send_fail = true;
+		}
+	}
+
 	if (rx_fail == 1) {
 		rx_fail = 0;
 	}
@@ -231,7 +277,7 @@ void radio_poll() {
 		user = radio_user;
 		msgp = radio_msg;
 		send_done = radio_send_done;
-		radio_sending = 0;
+		radio_sending = false;
 		debug1("EBUSY");
 		if(send_done != NULL)send_done((comms_layer_t *)&radio_iface, msgp, COMMS_EBUSY, user);
 	}
@@ -240,7 +286,7 @@ void radio_poll() {
 		user = radio_user;
 		msgp = radio_msg;
 		send_done = radio_send_done;
-		radio_sending = 0;
+		radio_sending = false;
 		debug1("FAIL");
 		if(send_done != NULL)send_done((comms_layer_t *)&radio_iface, msgp, COMMS_FAIL, user);
 	}
@@ -249,7 +295,7 @@ void radio_poll() {
 		user = radio_user;
 		msgp = radio_msg;
 		send_done = radio_send_done;
-		radio_sending = 0;
+		radio_sending = false;
 		_comms_set_ack_received((comms_layer_t *)&radio_iface, msgp);
 		//debug1("sdp: %p", send_done);
 		if(send_done != NULL) {
@@ -335,12 +381,12 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 
 	if(events & RAIL_EVENTS_TX_COMPLETION) {
 		if(events & RAIL_EVENT_TX_PACKET_SENT) {
-			radio_send_done_flag = 1;
+			radio_send_done_flag = true;
 		} else {
 			if(events & RAIL_EVENT_TX_CHANNEL_BUSY) {
-				radio_send_busy = 1;
-			} else {
-				radio_send_fail = 1;
+				radio_send_busy = true;
+			} else { // (RAIL_EVENT_TX_BLOCKED | RAIL_EVENT_TX_ABORTED | RAIL_EVENT_TX_UNDERFLOW)
+				radio_send_fail = true;
 			}
 		}
 	}
@@ -352,7 +398,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 				radio_rx_packet_handle = RAIL_HoldRxPacket(radio_rail_handle);
 			}
 		} else {
-			rx_fail = 1;
+			rx_fail++;
 		}
 	}
 
@@ -365,9 +411,14 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 RAIL_AssertErrorCodes_t global_rail_error_code;
 
 void RAILCb_AssertFailed(RAIL_Handle_t railHandle, RAIL_AssertErrorCodes_t errorCode) {
-	__ASM volatile("cpsid i" : : : "memory");
-	global_rail_error_code = errorCode;
-	while(1);
+	if(errorCode == RAIL_ASSERT_FAILED_UNEXPECTED_STATE_RX_FIFO) {
+		RAIL_Idle(railHandle, RAIL_IDLE, true);
+		radio_restart = true;
+	} else {
+		__ASM volatile("cpsid i" : : : "memory");
+		global_rail_error_code = errorCode;
+		while(1);
+	}
 }
 
 static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
