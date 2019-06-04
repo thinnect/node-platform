@@ -10,7 +10,6 @@
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
-#include "circular_queue.h"
 
 #include "cmsis_os2.h"
 // Because including FreeRTOS conflicts with SiLabs
@@ -36,7 +35,6 @@ static osTimerId_t radio_resend_timer;
 
 static uint8_t radio_tx_num;
 static RAIL_Handle_t radio_rail_handle;
-static Queue_t radio_rx_packet_queue;
 
 static volatile bool radio_send_done_flag;
 static volatile bool radio_send_busy;
@@ -227,9 +225,6 @@ RAIL_Handle_t radio_rail_init() {
 	RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
 	// RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, RAIL_EVENTS_ALL);
 
-	if(!queueInit(&radio_rx_packet_queue, MAX_QUEUE_LENGTH)) {
-		return(NULL);
-	}
 	RAIL_ConfigData(handle, &data_config);
 
 	RAIL_IEEE802154_Config2p4GHzRadio(handle);
@@ -366,6 +361,7 @@ static void radio_send_message(comms_msg_t* msg) {
 	} else {
 		rslt = RAIL_StartCcaCsmaTx(radio_rail_handle, radio_channel, 0, &csmaConf, NULL);
 	}
+	debug1("snd(%"PRIu8")=%d %p l:%d", radio_send_retries, rslt, msg, total);
 
 	if(rslt == RAIL_STATUS_NO_ERROR) {
 		osTimerStart(radio_send_timeout_timer, 1000);
@@ -407,7 +403,7 @@ static void signal_send_done(comms_error_t err) {
 	radio_send_busy = false;
 	radio_send_timeout = false;
 	rx_ack_timeout = 0;
-	
+
 	if(radio_msg_sending != NULL) {
 		user = radio_msg_sending->user;
 		msgp = radio_msg_sending->msg;
@@ -525,10 +521,10 @@ void radio_poll() {
 	// RX ack timeout handling -----------------------------------------------------
 	if(rx_ack_timeout) {
 		bool resend = false;
-		
+
 		warn1("rx ackTimeout");
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
-		
+
 		if(comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) < comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg)) {
 			resend = true;
 		}
@@ -696,7 +692,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 
 	if(events & RAIL_EVENTS_TX_COMPLETION) {
 		if(events & RAIL_EVENT_TX_PACKET_SENT) {
-			
+
 			radio_sent_time = RAIL_GetTime();
 			if (comms_am_get_destination((comms_layer_t *)&radio_iface, radio_msg_sending->msg) != 0xFFFF) {
 				RAIL_SetTimer(radio_rail_handle, radio_sent_time + 900, RAIL_TIME_ABSOLUTE, ackWaitTimer);
