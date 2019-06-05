@@ -33,8 +33,9 @@ static osMutexId_t radio_mutex;
 static osTimerId_t radio_send_timeout_timer;
 static osTimerId_t radio_resend_timer;
 
-static uint8_t radio_tx_num;
 static RAIL_Handle_t radio_rail_handle;
+static uint8_t radio_tx_num;
+static bool radio_tx_wait_ack;
 
 static volatile bool radio_send_done_flag;
 static volatile bool radio_send_busy;
@@ -45,7 +46,7 @@ static volatile uint8_t rx_overflow;
 static volatile uint8_t rx_frame_error;
 static volatile uint8_t rx_abort;
 static volatile uint8_t rx_fail;
-static volatile uint8_t rx_ack_timeout;
+static volatile bool rx_ack_timeout;
 static volatile uint8_t tx_ack_sent;
 static volatile bool radio_restart;
 
@@ -87,7 +88,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 		radio_msg_queue_free = &radio_msg_queue_memory[i];
 	}
 
-	rxQueue = osMessageQueueNew(5, sizeof(RAIL_RxPacketHandle_t), NULL);
+	rxQueue = osMessageQueueNew(10, sizeof(RAIL_RxPacketHandle_t), NULL);
 	if(rxQueue == NULL) {
 		err1("rxq");
 		return(NULL);
@@ -307,15 +308,19 @@ static void radio_send_message(comms_msg_t* msg) {
 	RAIL_Status_t rslt;
 	uint16_t count, total;
 	uint16_t src, dst;
+	uint8_t amid;
 	RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
 
 	count = comms_get_payload_length(iface, msg);
 	src = comms_am_get_source(iface, msg);
 	dst = comms_am_get_destination(iface, msg);
+	amid = comms_get_packet_type(iface, msg);
 	// is ack and not broadcast
 	if(comms_is_ack_required(iface, msg) && (dst != 0xFFFF)) {
+		radio_tx_wait_ack = true;
 		buffer[1] = 0x61;
 	} else {
+		radio_tx_wait_ack = false;
 		buffer[1] = 0x41;
 	}
 	buffer[2] = 0x88;
@@ -327,7 +332,7 @@ static void radio_send_message(comms_msg_t* msg) {
 	buffer[8] = ((src >> 0) & 0xFF);
 	buffer[9] = ((src >> 8) & 0xFF);
 	buffer[10] = 0x3F;
-	buffer[11] = comms_get_packet_type(iface, msg);
+	buffer[11] = amid;
 	if(comms_event_time_valid(iface, msg)) {
 		uint32_t evt_time, diff;
 		//debug1("evt time valid");
@@ -338,7 +343,7 @@ static void radio_send_message(comms_msg_t* msg) {
 		evt_time = comms_get_event_time(iface, msg);
 		diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
 
-		buffer[12+count] = comms_get_packet_type(iface, msg);
+		buffer[12+count] = amid;
 		buffer[13+count] = diff>>24;
 		buffer[14+count] = diff>>16;
 		buffer[15+count] = diff>>8;
@@ -346,7 +351,7 @@ static void radio_send_message(comms_msg_t* msg) {
 		count += 5;
 	} else {
 		//debug1("evt time NOT valid");
-		buffer[11] = comms_get_packet_type(iface, msg);
+		buffer[11] = amid;
 		memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 	}
 
@@ -356,12 +361,12 @@ static void radio_send_message(comms_msg_t* msg) {
 	RAIL_SetTxFifo(radio_rail_handle, buffer, total, sizeof(buffer));
 	radio_send_time = radio_sent_time = RAIL_GetTime();
 	// if ack is required in FCF
-	if (buffer[1] == 0x61) {
+	if(radio_tx_wait_ack) {
 		rslt = RAIL_StartCcaCsmaTx(radio_rail_handle, radio_channel, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
 	} else {
 		rslt = RAIL_StartCcaCsmaTx(radio_rail_handle, radio_channel, 0, &csmaConf, NULL);
 	}
-	debug1("snd(%"PRIu8")=%d %p l:%d", radio_send_retries, rslt, msg, total);
+	debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d", src, dst, amid, radio_tx_num, radio_send_retries, rslt, msg, total);
 
 	if(rslt == RAIL_STATUS_NO_ERROR) {
 		osTimerStart(radio_send_timeout_timer, 1000);
@@ -379,7 +384,7 @@ static void radio_resend_timeout_callback(void* argument) {
 	comms_set_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg, retu);
 	radio_send_message(radio_msg_sending->msg);
 	vPortEnterCritical();
-	rx_ack_timeout = 0;
+	rx_ack_timeout = false;
 	vPortExitCritical();
 }
 
@@ -402,7 +407,7 @@ static void signal_send_done(comms_error_t err) {
 	radio_send_fail = false;
 	radio_send_busy = false;
 	radio_send_timeout = false;
-	rx_ack_timeout = 0;
+	rx_ack_timeout = false;
 
 	if(radio_msg_sending != NULL) {
 		user = radio_msg_sending->user;
@@ -447,7 +452,7 @@ void radio_poll() {
 	}
 
 	// Sending has completed ---------------------------------------------------
-	if((radio_send_done_flag) && (rx_ack_timeout == 0)) {
+	if(radio_send_done_flag) {
 		signal_send_done(COMMS_SUCCESS);
 	}
 
@@ -522,21 +527,24 @@ void radio_poll() {
 	if(rx_ack_timeout) {
 		bool resend = false;
 
-		warn1("rx ackTimeout");
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
 
 		if(comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) < comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg)) {
 			resend = true;
 		}
 		osMutexRelease(radio_mutex);
+
+		logger(resend?LOG_DEBUG1:LOG_WARN1, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
+		       comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg),
+		       comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
 		if(resend) {
-			uint32_t tout = comms_get_timeout((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
-			osTimerStart(radio_resend_timer, tout);
+			radio_send_retries = 0;
+			osTimerStart(radio_resend_timer, comms_get_timeout((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
 		} else {
-			signal_send_done(COMMS_ENOACK);
 			vPortEnterCritical();
-			rx_ack_timeout = 0;
+			rx_ack_timeout = false;
 			vPortExitCritical();
+			signal_send_done(COMMS_ENOACK);
 		}
 	}
 
@@ -607,7 +615,12 @@ void radio_poll() {
 				}
 
 				if ((packetInfo.packetBytes == 4) && (buffer[0] == 0x05) && (buffer[1] == 0x02)) {
-					info1("ackRcvd");
+					infob1("ackRcvd", buffer, 4);
+					// TODO check seq num match? RAIL probably checks it already though
+					if(radio_msg_sending != NULL) {
+						radio_send_done_flag = true;
+						comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
+					} else warn1("ack NULL");
 				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
 					comms_msg_t msg;
 					am_id_t amid;
@@ -639,6 +652,9 @@ void radio_poll() {
 					payload = comms_get_payload((comms_layer_t *)&radio_iface, &msg, plen);
 
 					if(payload != NULL) {
+						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+						uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+
 						comms_set_packet_type((comms_layer_t *)&radio_iface, &msg, amid);
 						comms_set_payload_length((comms_layer_t *)&radio_iface, &msg, plen);
 						memcpy(payload, (const void *)&buffer[12], plen);
@@ -653,13 +669,13 @@ void radio_poll() {
 							lqi = lqi + (packetDetails.rssi+93)*50;
 						}
 						_comms_set_lqi((comms_layer_t *)&radio_iface, &msg, lqi);
-						comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8));
-						comms_am_set_source((comms_layer_t *)&radio_iface, &msg, ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8));
+						comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, dest);
+						comms_am_set_source((comms_layer_t *)&radio_iface, &msg, source);
 
-						debugb1("rx %02"PRIX8" %"PRIu32"/%"PRIu32" %d/%d r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8, amid,
-								rts, rtsd,
-								timeDetails.timeReceived.timePosition, packetDetails.timeReceived.timePosition,
-								packetDetails.rssi, lqi, plen);
+						debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32"/%"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8,
+						        source, dest, amid,
+						        rts, rtsd,
+						        packetDetails.rssi, lqi, plen);
 						comms_deliver((comms_layer_t *)&radio_iface, &msg);
 					}
 					else warn1("rx bad pl %02"PRIX8" %"PRIu8, amid, plen);
@@ -692,10 +708,9 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 
 	if(events & RAIL_EVENTS_TX_COMPLETION) {
 		if(events & RAIL_EVENT_TX_PACKET_SENT) {
-
 			radio_sent_time = RAIL_GetTime();
-			if (comms_am_get_destination((comms_layer_t *)&radio_iface, radio_msg_sending->msg) != 0xFFFF) {
-				RAIL_SetTimer(radio_rail_handle, radio_sent_time + 900, RAIL_TIME_ABSOLUTE, ackWaitTimer);
+			if(radio_tx_wait_ack) {
+				// Wait for the ack or the RAIL_EVENT_RX_ACK_TIMEOUT event
 			} else {
 				radio_send_done_flag = true;
 			}
@@ -709,6 +724,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 	}
 
 	if(events & RAIL_EVENTS_RX_COMPLETION) {
+		bool unhandled = true;
 		if(events & RAIL_EVENT_RX_PACKET_RECEIVED) {
 			RAIL_RxPacketHandle_t rxh = RAIL_HoldRxPacket(radio_rail_handle);
 			if(rxh != RAIL_RX_PACKET_HANDLE_INVALID) {
@@ -720,15 +736,26 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 			else {
 				rx_busy++;
 			}
-		} else if(events & RAIL_EVENT_RX_FIFO_OVERFLOW) {
+			unhandled = false;
+		}
+		if(events & RAIL_EVENT_RX_FIFO_OVERFLOW) {
 			rx_overflow++;
-		} else if(events & RAIL_EVENT_RX_ADDRESS_FILTERED) {
+			unhandled = false;
+		}
+		if(events & RAIL_EVENT_RX_ADDRESS_FILTERED) {
 			// don't care
-		} else if(events & RAIL_EVENT_RX_FRAME_ERROR) {
+			unhandled = false;
+		}
+		if(events & RAIL_EVENT_RX_FRAME_ERROR) {
 			rx_frame_error++;
-		} else if(events & RAIL_EVENT_RX_PACKET_ABORTED) {
+			unhandled = false;
+		}
+		if(events & RAIL_EVENT_RX_PACKET_ABORTED) {
 			rx_abort++;
-		} else {
+			unhandled = false;
+		}
+
+		if(unhandled) {
 			rx_fail++;
 		}
 	}
@@ -738,7 +765,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 	}
 
 	if(events & RAIL_EVENT_RX_ACK_TIMEOUT) {
-		rx_ack_timeout++;
+		rx_ack_timeout = true;
 	}
 
 	if(events & RAIL_EVENT_CAL_NEEDED) {
