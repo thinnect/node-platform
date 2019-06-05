@@ -1,11 +1,20 @@
+/*
+ * SiLabs RETARGET_Serial inspired SPI retargeting solution.
+ *
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Raido Pahtma
+ */
+
+#include "retargetspi.h"
+#include "retargetspiconfig.h"
+
 #include "spi.h"
 #include <stdio.h>
 #include "em_cmu.h"
 #include "em_gpio.h"
 #include "em_usart.h"
 #include "mask.h"
-
-#include "retargetspiconfig.h"
 
 void RETARGET_SpiInit() {
 	USART_InitSync_TypeDef init = USART_INITSYNC_DEFAULT;
@@ -38,9 +47,9 @@ void RETARGET_SpiInit() {
 		    GPIO_USART_ROUTEEN_TXPEN |  // MOSI
 		    GPIO_USART_ROUTEEN_CLKPEN;  // CLK
 	#elif defined(USART_ROUTEPEN_RXPEN)  // Series 1
-		RETARGET_SPI_UART->ROUTELOC0 = (RETARGET_SPI_CLK_LOCATION)
-									 | (RETARGET_SPI_TX_LOCATION)
-									 | (RETARGET_SPI_RX_LOCATION);
+		RETARGET_SPI_UART->ROUTELOC0 = (RETARGET_SPI_CLK_LOC)
+									 | (RETARGET_SPI_TX_LOC)
+									 | (RETARGET_SPI_RX_LOC);
 
 		// Enable USART interface pins
 		RETARGET_SPI_UART->ROUTEPEN |= USART_ROUTEPEN_TXPEN | USART_ROUTEPEN_RXPEN | USART_ROUTEPEN_CLKPEN;

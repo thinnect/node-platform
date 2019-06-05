@@ -1,3 +1,10 @@
+/*
+ * SiLabs RETARGET_Serial inspired SPI retargeting solution.
+ *
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Raido Pahtma
+ */
 #pragma once
 
 #include <stdint.h>
