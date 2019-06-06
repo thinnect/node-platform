@@ -34,6 +34,7 @@ static osTimerId_t radio_send_timeout_timer;
 static osTimerId_t radio_resend_timer;
 
 static RAIL_Handle_t radio_rail_handle;
+static RAIL_Status_t rx_fifo_status;
 static uint8_t radio_tx_num;
 static bool radio_tx_wait_ack;
 
@@ -161,6 +162,7 @@ RAIL_Handle_t radio_rail_init() {
 	rx_busy = 0;
 	rx_overflow = 0;
 	rx_fail = 0;
+	rx_fifo_status = RAIL_STATUS_NO_ERROR-1;
 
 	int32_t priority = 3; // not shifted, but once shifted = 01100000
 	NVIC_SetPriority(FRC_PRI_IRQn, priority);
@@ -237,7 +239,26 @@ RAIL_Handle_t radio_rail_init() {
 	if(RAIL_StartRx(handle, radio_channel, NULL) != RAIL_STATUS_NO_ERROR) {
 		err1("StartRx");
 	}
+	debug1("railstartup fifo:%d", rx_fifo_status);
 	return handle;
+}
+
+#define RAIL_RX_FIFO_SIZE 2048
+static uint8_t rail_rx_fifo[RAIL_RX_FIFO_SIZE];
+RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle) {
+	uint16_t rxFifoSize = RAIL_RX_FIFO_SIZE;
+	RAIL_Status_t status = RAIL_SetRxFifo(railHandle, &rail_rx_fifo[0], &rxFifoSize);
+	rx_fifo_status = status;
+	if(rxFifoSize != RAIL_RX_FIFO_SIZE) {
+		// We set up an incorrect FIFO size
+		rx_fifo_status = RAIL_STATUS_INVALID_PARAMETER;
+		return RAIL_STATUS_INVALID_PARAMETER;
+	}
+	if(status == RAIL_STATUS_INVALID_STATE) {
+		// Allow failures due to multiprotocol
+    	return RAIL_STATUS_NO_ERROR;
+	}
+	return status;
 }
 
 void radio_idle() {
