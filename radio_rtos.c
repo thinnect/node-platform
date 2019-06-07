@@ -474,6 +474,10 @@ void radio_poll() {
 
 	// Sending has completed ---------------------------------------------------
 	if(radio_send_done_flag) {
+		if(radio_tx_wait_ack) { // Alternatively we should get rx_ack_timeout
+			debug1("ackd %d", rx_ack_timeout);
+			comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
+		}
 		signal_send_done(COMMS_SUCCESS);
 	}
 
@@ -635,14 +639,7 @@ void radio_poll() {
 					while(1);
 				}
 
-				if ((packetInfo.packetBytes == 4) && (buffer[0] == 0x05) && (buffer[1] == 0x02)) {
-					infob1("ackRcvd", buffer, 4);
-					// TODO check seq num match? RAIL probably checks it already though
-					if(radio_msg_sending != NULL) {
-						radio_send_done_flag = true;
-						comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
-					} else warn1("ack NULL");
-				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+				if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
 					comms_msg_t msg;
 					am_id_t amid;
 					void* payload;
@@ -749,9 +746,26 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 		if(events & RAIL_EVENT_RX_PACKET_RECEIVED) {
 			RAIL_RxPacketHandle_t rxh = RAIL_HoldRxPacket(radio_rail_handle);
 			if(rxh != RAIL_RX_PACKET_HANDLE_INVALID) {
-				if(osMessageQueuePut(rxQueue, &rxh, 0, 0) != osOK) {
-					RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
-					rx_busy++;
+				RAIL_RxPacketInfo_t pi;
+				if(RAIL_GetRxPacketInfo(radio_rail_handle, rxh, &pi) == rxh) {
+					if(pi.packetBytes == 4) { // Inspect if it is an ack
+						uint8_t buffer[4];
+						RAIL_CopyRxPacket(buffer, &pi);
+						if((buffer[0] == 0x05) && (buffer[1] == 0x02)) {
+							if(radio_tx_wait_ack) { // Could also check the actual seq, but we assume RAIL does that
+								radio_send_done_flag = true;
+							}
+							RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
+							rxh = RAIL_RX_PACKET_HANDLE_INVALID;
+						}
+					}
+				}
+
+				if(rxh != RAIL_RX_PACKET_HANDLE_INVALID) { // Would have been discarded if it was ack
+					if(osMessageQueuePut(rxQueue, &rxh, 0, 0) != osOK) {
+						RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
+						rx_busy++;
+					}
 				}
 			}
 			else {
