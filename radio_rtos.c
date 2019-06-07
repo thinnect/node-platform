@@ -24,6 +24,8 @@ extern void vPortExitCritical();
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
 #include "log.h"
 
+#define MAX_TABLE_ROW 20
+
 uint16_t radio_address;
 static uint16_t radio_pan_id;
 static uint16_t radio_channel;
@@ -50,10 +52,20 @@ static volatile uint8_t rx_fail;
 static volatile bool rx_ack_timeout;
 static volatile uint8_t tx_ack_sent;
 static volatile bool radio_restart;
+static volatile uint8_t tableRow;
 
 static uint32_t radio_send_time;
 static uint32_t radio_sent_time;
 static uint8_t radio_send_retries;
+
+typedef struct seqDstTs
+{
+	uint8_t seqNum;
+	uint16_t dst;
+	uint32_t timestamp;
+} seqDstTs_t;
+
+seqDstTs_t sdt[MAX_TABLE_ROW];
 
 static void radio_thread(void *p);
 
@@ -79,6 +91,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_pan_id = pan_id;
 	radio_address = address;
 	radio_tx_num = 0;
+	tableRow = 0;
 
 	radio_msg_sending = NULL;
 	radio_msg_queue_head = NULL;
@@ -639,13 +652,49 @@ void radio_poll() {
 					while(1);
 				}
 
-				if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+				bool process = true;
+				uint32_t currTime = RAIL_GetTime();
+				uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+
+				if ((packetInfo.packetBytes >= 12) && (dest != 0xFFFF)) {
+					for (uint8_t i=0; i<MAX_TABLE_ROW; i++) {
+						if ((sdt[i].seqNum == buffer[3]) && (sdt[i].dst == dest) 
+							&& (sdt[i].timestamp > (currTime-10000))) { // 10ms???
+							process = false;
+							break;
+						}
+					}
+				}
+
+				if ((packetInfo.packetBytes == 4) && (buffer[0] == 0x05) && (buffer[1] == 0x02)) {
+					infob1("ackRcvd", buffer, 4);
+					// TODO check seq num match? RAIL probably checks it already though
+					if(radio_msg_sending != NULL) {
+						radio_send_done_flag = true;
+						comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
+					} else warn1("ack NULL");
+				} else if (process == false) {
+					warn1("seqNum:%02"PRIX8, buffer[3]);
+				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
+							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+
 					comms_msg_t msg;
 					am_id_t amid;
 					void* payload;
 					uint8_t plen;
 					uint8_t lqi = 0xFF;
 					uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
+
+					if (dest != 0xFFFF) {
+						if (tableRow < MAX_TABLE_ROW-1) {
+							tableRow++;
+						} else {
+							tableRow = 0;
+						}
+						sdt[tableRow].seqNum = buffer[3];
+						sdt[tableRow].dst = dest;
+						sdt[tableRow].timestamp = currTime;
+					}
 
 					comms_init_message((comms_layer_t *)&radio_iface, &msg);
 					if(buffer[11] == 0x3D) {
@@ -670,7 +719,7 @@ void radio_poll() {
 					payload = comms_get_payload((comms_layer_t *)&radio_iface, &msg, plen);
 
 					if(payload != NULL) {
-						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+						
 						uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
 
 						comms_set_packet_type((comms_layer_t *)&radio_iface, &msg, amid);
