@@ -666,14 +666,7 @@ void radio_poll() {
 					}
 				}
 
-				if ((packetInfo.packetBytes == 4) && (buffer[0] == 0x05) && (buffer[1] == 0x02)) {
-					infob1("ackRcvd", buffer, 4);
-					// TODO check seq num match? RAIL probably checks it already though
-					if(radio_msg_sending != NULL) {
-						radio_send_done_flag = true;
-						comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
-					} else warn1("ack NULL");
-				} else if (process == false) {
+				if (process == false) {
 					warn1("seqNum:%02"PRIX8, buffer[3]);
 				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
 							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
