@@ -160,7 +160,8 @@ RAIL_Handle_t radio_rail_init() {
 	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
 	// Load the channel configuration for the generated radio settings
-	RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
+	//RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
+	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
 	             | RAIL_EVENT_RX_ACK_TIMEOUT
