@@ -24,7 +24,13 @@ extern void vPortExitCritical();
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
 #include "log.h"
 
-#define MAX_TABLE_ROW 20
+#ifndef SRC_SAVED_MAX
+#define SRC_SAVED_MAX 50
+#endif
+
+#ifndef SEQNUM_TIMEOUT_SEC
+#define SEQNUM_TIMEOUT_SEC 3
+#endif
 
 uint16_t radio_address;
 static uint16_t radio_pan_id;
@@ -52,20 +58,19 @@ static volatile uint8_t rx_fail;
 static volatile bool rx_ack_timeout;
 static volatile uint8_t tx_ack_sent;
 static volatile bool radio_restart;
-static volatile uint8_t tableRow;
+static volatile uint8_t newSrcPos;
 
 static uint32_t radio_send_time;
 static uint32_t radio_sent_time;
 static uint8_t radio_send_retries;
 
-typedef struct seqDstTs
-{
+typedef struct seqSrcTs {
 	uint8_t seqNum;
-	uint16_t dst;
-	uint32_t timestamp;
-} seqDstTs_t;
+	uint16_t src;
+	uint16_t timestamp;
+} seqSrcTs_t;
 
-seqDstTs_t sdt[MAX_TABLE_ROW];
+seqSrcTs_t srcAddrTable[SRC_SAVED_MAX];
 
 static void radio_thread(void *p);
 
@@ -91,7 +96,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_pan_id = pan_id;
 	radio_address = address;
 	radio_tx_num = 0;
-	tableRow = 0;
+	newSrcPos = 0;
 
 	radio_msg_sending = NULL;
 	radio_msg_queue_head = NULL;
@@ -653,13 +658,24 @@ void radio_poll() {
 				}
 
 				bool process = true;
-				uint32_t currTime = RAIL_GetTime();
-				uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+				bool replace = false;
+				uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
+				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+				uint8_t srcPos = 0;
 
-				if ((packetInfo.packetBytes >= 12) && (dest != 0xFFFF)) {
-					for (uint8_t i=0; i<MAX_TABLE_ROW; i++) {
-						if ((sdt[i].seqNum == buffer[3]) && (sdt[i].dst == dest) 
-							&& (sdt[i].timestamp > (currTime-10000))) { // 10ms???
+				if ((packetInfo.packetBytes >= 12)) {
+					for (uint8_t i=0; i<SRC_SAVED_MAX; i++) {
+						if ((srcAddrTable[i].src == source) && (srcAddrTable[i].seqNum != buffer[3])) {
+							srcPos = i;
+							replace = true;
+							break;
+						} else if ((srcAddrTable[i].src == source) && (srcAddrTable[i].timestamp < (currTime-SEQNUM_TIMEOUT_SEC))) {
+							srcPos = i;
+							replace = true;
+							break;
+						} else if ((srcAddrTable[i].seqNum == buffer[3]) && (srcAddrTable[i].src == source) 
+							&& (srcAddrTable[i].timestamp > (currTime-SEQNUM_TIMEOUT_SEC))) {
+							srcAddrTable[i].timestamp = currTime;
 							process = false;
 							break;
 						}
@@ -678,15 +694,15 @@ void radio_poll() {
 					uint8_t lqi = 0xFF;
 					uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
 
-					if (dest != 0xFFFF) {
-						if (tableRow < MAX_TABLE_ROW-1) {
-							tableRow++;
-						} else {
-							tableRow = 0;
-						}
-						sdt[tableRow].seqNum = buffer[3];
-						sdt[tableRow].dst = dest;
-						sdt[tableRow].timestamp = currTime;
+					if (replace == true) { 
+						srcAddrTable[srcPos].seqNum = buffer[3];
+						srcAddrTable[srcPos].src = source;
+						srcAddrTable[srcPos].timestamp = currTime;
+					} else {
+						srcAddrTable[newSrcPos].seqNum = buffer[3];
+						srcAddrTable[newSrcPos].src = source;
+						srcAddrTable[newSrcPos].timestamp = currTime;
+						newSrcPos++;
 					}
 
 					comms_init_message((comms_layer_t *)&radio_iface, &msg);
@@ -712,8 +728,7 @@ void radio_poll() {
 					payload = comms_get_payload((comms_layer_t *)&radio_iface, &msg, plen);
 
 					if(payload != NULL) {
-						
-						uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
 
 						comms_set_packet_type((comms_layer_t *)&radio_iface, &msg, amid);
 						comms_set_payload_length((comms_layer_t *)&radio_iface, &msg, plen);
