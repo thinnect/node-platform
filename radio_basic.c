@@ -120,7 +120,7 @@ RAIL_Handle_t radio_rail_init() {
 	NVIC_SetPriority(AGC_IRQn, priority);
 	NVIC_SetPriority(PROTIMER_IRQn, priority);
 	NVIC_SetPriority(SYNTH_IRQn, priority);
-	NVIC_SetPriority(RFSENSE_IRQn, priority);
+	//NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
 
 	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
 	if(handle == NULL) {
