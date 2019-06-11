@@ -19,18 +19,12 @@ extern void vPortExitCritical();
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
+#include "seqNum.h"
+
 #include "loglevels.h"
 #define __MODUUL__ "radio"
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
 #include "log.h"
-
-#ifndef SEQNUM_TABLE_SIZE
-#define SEQNUM_TABLE_SIZE 50
-#endif
-
-#ifndef SEQNUM_TIMEOUT_SEC
-#define SEQNUM_TIMEOUT_SEC 15
-#endif
 
 uint16_t radio_address;
 static uint16_t radio_pan_id;
@@ -63,14 +57,6 @@ static volatile uint8_t newSrcPos;
 static uint32_t radio_send_time;
 static uint32_t radio_sent_time;
 static uint8_t radio_send_retries;
-
-typedef struct seqSrcTs {
-	uint8_t seqNum;
-	uint16_t src;
-	uint16_t timestamp;
-} seqSrcTs_t;
-
-seqSrcTs_t srcAddrTable[SEQNUM_TABLE_SIZE];
 
 static void radio_thread(void *p);
 
@@ -657,35 +643,10 @@ void radio_poll() {
 					while(1);
 				}
 
-				bool process = true;
-				bool replace = false;
 				uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
 				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
-				uint8_t srcPos = 0;
 
-				if ((packetInfo.packetBytes >= 12)) {
-					for (uint8_t i=0; i<SEQNUM_TABLE_SIZE; i++) {
-						srcPos = i;
-						if ((srcAddrTable[i].src == source) && (srcAddrTable[i].seqNum != buffer[3]) 
-							&& (srcAddrTable[i].timestamp > (currTime-SEQNUM_TIMEOUT_SEC))) {
-							replace = true;
-							break;
-						} else if (srcAddrTable[i].timestamp < (currTime-SEQNUM_TIMEOUT_SEC)) {
-							replace = true;
-							break;
-						} else if (srcAddrTable[i].src == 0) {
-							replace = true;
-							break;
-						} else if ((srcAddrTable[i].seqNum == buffer[3]) && (srcAddrTable[i].src == source) 
-							&& (srcAddrTable[i].timestamp > (currTime-SEQNUM_TIMEOUT_SEC))) {
-							srcAddrTable[i].timestamp = currTime;
-							process = false;
-							break;
-						}
-					}
-				}
-
-				if (process == false) {
+				if ((!seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
 					warn1("same seqNum:%02"PRIX8, buffer[3]);
 				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
 							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
@@ -695,30 +656,7 @@ void radio_poll() {
 					void* payload;
 					uint8_t plen;
 					uint8_t lqi = 0xFF;
-					uint8_t oldestPos = 0;
-					uint16_t oldestTimestamp = srcAddrTable[0].timestamp;
 					uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
-
-					if ((srcPos == (SEQNUM_TABLE_SIZE-1)) && (replace == false)) {
-						warn1("seqNums table is full!");
-						info1("src: %04"PRIX16", seqNum: %02"PRIX8", ts: %"PRIu16, srcAddrTable[0].src, srcAddrTable[0].seqNum, srcAddrTable[0].timestamp);
-						for (uint8_t i=1; i<SEQNUM_TABLE_SIZE; i++) {
-							info1("src: %04"PRIX16", seqNum: %02"PRIX8", ts: %"PRIu16, srcAddrTable[i].src, srcAddrTable[i].seqNum, srcAddrTable[i].timestamp);
-							if (srcAddrTable[i].timestamp < oldestTimestamp) {
-								oldestPos = i;
-								oldestTimestamp = srcAddrTable[i].timestamp;
-							}
-						}
-						srcPos = oldestPos;
-						info1("oldest seqNum: %"PRIu8, srcPos);
-						replace = true;
-					}
-
-					if (replace == true) {
-						srcAddrTable[srcPos].seqNum = buffer[3];
-						srcAddrTable[srcPos].src = source;
-						srcAddrTable[srcPos].timestamp = currTime;
-					}
 
 					comms_init_message((comms_layer_t *)&radio_iface, &msg);
 					if(buffer[11] == 0x3D) {
