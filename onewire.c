@@ -24,6 +24,7 @@ void onewire_init(){
 	USART_TypeDef *usart = ONEWIRE_UART;
 	USART_InitAsync_TypeDef init = USART_INITASYNC_DEFAULT;
 
+	CMU_ClockEnable(cmuClock_GPIO, true);
 	CMU_ClockEnable(ONEWIRE_UART_CLOCK, true);
 
 	init.enable = usartDisable;

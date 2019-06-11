@@ -64,9 +64,15 @@ bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 	result = bme280_get_sensor_data(BME280_ALL, &comp_data, &bme280);
 	debug1("GET SENSOR DATA: %u", (unsigned int)result);
 
-	*temperature = comp_data.temperature;
-	*pressure = comp_data.pressure;
-	*humidity = comp_data.humidity;
+	if(temperature != NULL){
+		*temperature = comp_data.temperature;
+	}
+	if(pressure != NULL){
+		*pressure = comp_data.pressure;
+	}
+	if(humidity != NULL){
+		*humidity = comp_data.humidity;
+	}
 
 	return(true);
 }
