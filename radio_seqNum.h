@@ -1,3 +1,10 @@
+/**
+* Radio message sequence number checking and storage.
+*
+* Copyright Thinnect.
+* @license <PROPRIETARY>
+* @author Konstantin Bilozor
+*/
 #pragma once
 
 #include <stdint.h>
@@ -27,3 +34,4 @@ typedef struct seqSrcTs {
  * @returns True if received sequence number was saved, false if discarded.
  */
 bool radio_seqNum_save(uint16_t src, uint8_t seqNum, uint16_t currTime);
+

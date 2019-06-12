@@ -1,3 +1,10 @@
+/**
+* Radio message sequence number checking and storage.
+*
+* Copyright Thinnect.
+* @license <PROPRIETARY>
+* @author Konstantin Bilozor
+*/
 #include <stdint.h>
 #include <stdbool.h>
 #include <inttypes.h>
