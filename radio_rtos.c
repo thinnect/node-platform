@@ -19,7 +19,7 @@ extern void vPortExitCritical();
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
-#include "seqNum.h"
+#include "radio_seqNum.h"
 
 #include "loglevels.h"
 #define __MODUUL__ "radio"
@@ -646,7 +646,7 @@ void radio_poll() {
 				uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
 				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
 
-				if ((!seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
+				if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
 					warn1("same seqNum:%02"PRIX8, buffer[3]);
 				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
 							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
