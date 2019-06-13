@@ -14,6 +14,8 @@
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
+#include "radio_seqNum.h"
+
 #include "loglevels.h"
 #define __MODUUL__ "radio"
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
@@ -347,8 +349,13 @@ void radio_poll() {
 			rx_packet_ready = false;
 		}
 
+		uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+		uint16_t currTime = (uint16_t)(RAIL_GetTime() / 1000000);
+
 		radio_rx_packet_handle = RAIL_RX_PACKET_HANDLE_INVALID;
-		if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+		if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
+			warn1("same seqNum:%02"PRIX8, buffer[3]);
+		} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
 			am_id_t amid;
 			void* payload;
 			uint8_t plen;
@@ -359,6 +366,7 @@ void radio_poll() {
 			payload = comms_get_payload((comms_layer_t *)&radio_iface, &msg, plen);
 
 			if(payload != NULL) {
+				uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
 				comms_set_packet_type((comms_layer_t *)&radio_iface, &msg, amid);
 				comms_set_payload_length((comms_layer_t *)&radio_iface, &msg, plen);
 				memcpy(payload, (const void *)&buffer[12], plen);
@@ -366,8 +374,8 @@ void radio_poll() {
 				comms_set_timestamp((comms_layer_t *)&radio_iface, &msg, timestamp);
 				_comms_set_rssi((comms_layer_t *)&radio_iface, &msg, packetDetails.rssi);
 				_comms_set_lqi((comms_layer_t *)&radio_iface, &msg, 0xFF);
-				comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8));
-				comms_am_set_source((comms_layer_t *)&radio_iface, &msg, ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8));
+				comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, dest);
+				comms_am_set_source((comms_layer_t *)&radio_iface, &msg, source);
 
 				debug1("rx %02"PRIX8" %"PRIu8, amid, plen);
 				comms_deliver((comms_layer_t *)&radio_iface, &msg);

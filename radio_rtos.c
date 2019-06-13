@@ -19,6 +19,8 @@ extern void vPortExitCritical();
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
+#include "radio_seqNum.h"
+
 #include "loglevels.h"
 #define __MODUUL__ "radio"
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
@@ -50,6 +52,7 @@ static volatile uint8_t rx_fail;
 static volatile bool rx_ack_timeout;
 static volatile uint8_t tx_ack_sent;
 static volatile bool radio_restart;
+static volatile uint8_t newSrcPos;
 
 static uint32_t radio_send_time;
 static uint32_t radio_sent_time;
@@ -79,6 +82,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_pan_id = pan_id;
 	radio_address = address;
 	radio_tx_num = 0;
+	newSrcPos = 0;
 
 	radio_msg_sending = NULL;
 	radio_msg_queue_head = NULL;
@@ -639,7 +643,14 @@ void radio_poll() {
 					while(1);
 				}
 
-				if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) && (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+				uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
+				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+
+				if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
+					warn1("same seqNum:%02"PRIX8, buffer[3]);
+				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
+							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
+
 					comms_msg_t msg;
 					am_id_t amid;
 					void* payload;
@@ -671,7 +682,6 @@ void radio_poll() {
 
 					if(payload != NULL) {
 						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
-						uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
 
 						comms_set_packet_type((comms_layer_t *)&radio_iface, &msg, amid);
 						comms_set_payload_length((comms_layer_t *)&radio_iface, &msg, plen);
