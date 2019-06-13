@@ -178,7 +178,7 @@ RAIL_Handle_t radio_rail_init() {
 	NVIC_SetPriority(AGC_IRQn, priority);
 	NVIC_SetPriority(PROTIMER_IRQn, priority);
 	NVIC_SetPriority(SYNTH_IRQn, priority);
-	NVIC_SetPriority(RFSENSE_IRQn, priority);
+	//NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
 
 	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
 	if(handle == NULL) {
@@ -219,7 +219,8 @@ RAIL_Handle_t radio_rail_init() {
 	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
 	// Load the channel configuration for the generated radio settings
-	RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
+	//RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
+	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
 				 | RAIL_EVENT_RX_ACK_TIMEOUT
@@ -648,7 +649,7 @@ void radio_poll() {
 
 				if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12)) {
 					warn1("same seqNum:%02"PRIX8, buffer[3]);
-				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88) 
+				} else if((packetInfo.packetBytes >= 12) && (buffer[2] == 0x88)
 							&& (buffer[5] == 0x00) && (buffer[10] == 0x3F)) {
 
 					comms_msg_t msg;
