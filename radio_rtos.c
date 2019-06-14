@@ -208,7 +208,6 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-
 	RAIL_TxPower_t power = -140; // Testsystem power: -16.8dBm
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
@@ -223,11 +222,11 @@ RAIL_Handle_t radio_rail_init() {
 	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
-				 | RAIL_EVENT_RX_ACK_TIMEOUT
-				 | RAIL_EVENTS_TX_COMPLETION
-				 | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
-				 | RAIL_EVENT_TXACK_PACKET_SENT
-				 ;
+	                     | RAIL_EVENT_RX_ACK_TIMEOUT
+	                     | RAIL_EVENTS_TX_COMPLETION
+	                     | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
+	                     | RAIL_EVENT_TXACK_PACKET_SENT
+	                     ;
 	//           | RAIL_EVENTS_RX_COMPLETION
 
 	RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
@@ -339,7 +338,13 @@ static void radio_send_message(comms_msg_t* msg) {
 
 	count = comms_get_payload_length(iface, msg);
 	src = comms_am_get_source(iface, msg);
+	if(src == 0) {
+		src = radio_address;
+	}
 	dst = comms_am_get_destination(iface, msg);
+	if(dst == 0) {
+		warn1("dest not set");
+	}
 	amid = comms_get_packet_type(iface, msg);
 	// is ack and not broadcast
 	if(comms_is_ack_required(iface, msg) && (dst != 0xFFFF)) {

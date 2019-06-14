@@ -10,7 +10,6 @@
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
-#include "circular_queue.h"
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
@@ -166,10 +165,10 @@ RAIL_Handle_t radio_rail_init() {
 	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
-	             | RAIL_EVENT_RX_ACK_TIMEOUT
-	             | RAIL_EVENTS_TX_COMPLETION
-	             | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
-	             ;
+	                     | RAIL_EVENT_RX_ACK_TIMEOUT
+	                     | RAIL_EVENTS_TX_COMPLETION
+	                     | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
+	                     ;
 	//           | RAIL_EVENTS_RX_COMPLETION
 
 	RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
@@ -217,7 +216,13 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 	radio_user = user;
 	count = comms_get_payload_length((comms_layer_t *)iface, msg);
 	src = comms_am_get_source((comms_layer_t *)iface, msg);
+	if(src == 0) {
+		src = radio_address;
+	}
 	dst = comms_am_get_destination((comms_layer_t *)iface, msg);
+	if(dst == 0) {
+		warn1("dest not set");
+	}
 	buffer[0] = count + 13;
 	if(comms_is_ack_required((comms_layer_t *)iface, msg)) {
 		buffer[1] = 0x61;
