@@ -526,7 +526,8 @@ void radio_poll() {
 
 	// RX busy handling -----------------------------------------------------
 	if(rx_busy || rx_overflow) {
-		uint8_t rxb, rxo;
+		uint8_t rxb __attribute__((unused));
+		uint8_t rxo __attribute__((unused));
 		vPortEnterCritical();
 		rxb = rx_busy;
 		rxo = rx_overflow;
@@ -538,7 +539,8 @@ void radio_poll() {
 
 	// RX failure handling -----------------------------------------------------
 	if((rx_abort > 100) || rx_fail) {
-		uint8_t rxa, rxf;
+		uint8_t rxa __attribute__((unused));
+		uint8_t rxf __attribute__((unused));
 		vPortEnterCritical();
 		rxa = rx_abort;
 		rxf = rx_fail;
@@ -550,7 +552,7 @@ void radio_poll() {
 
 	// RX frame error handling -----------------------------------------------------
 	if(rx_frame_error) {
-		uint8_t rxfe;
+		uint8_t rxfe __attribute__((unused));
 		vPortEnterCritical();
 		rxfe = rx_frame_error;
 		rx_frame_error = 0;
@@ -585,7 +587,7 @@ void radio_poll() {
 
 	// TX ack sent -----------------------------------------------------------------
 	if(tx_ack_sent) {
-		uint8_t tas;
+		uint8_t tas __attribute__((unused));
 		vPortEnterCritical();
 		tas = tx_ack_sent;
 		tx_ack_sent = 0;
@@ -605,8 +607,7 @@ void radio_poll() {
 				uint8_t buffer[256] = {0};
 				RAIL_RxPacketDetails_t timeDetails = packetDetails;
 				bool rts_valid = timeDetails.timeReceived.timePosition != RAIL_PACKET_TIME_INVALID;
-				uint32_t rts = 0;
-				uint32_t rtsd = 0;
+				uint32_t rts = 0; // timeReceived.packetTime
 
 				if((packetInfo.packetBytes > 11) && (packetInfo.firstPortionData == NULL)) {
 					while(1);
@@ -625,7 +626,6 @@ void radio_poll() {
 				}
 
 				if(rts_valid) {
-					rtsd = timeDetails.timeReceived.packetTime;
 					// Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
 					timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
 					// Want the earliest timestamp possible
@@ -706,9 +706,9 @@ void radio_poll() {
 						comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, dest);
 						comms_am_set_source((comms_layer_t *)&radio_iface, &msg, source);
 
-						debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32"/%"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8,
+						debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8,
 						        source, dest, amid,
-						        rts, rtsd,
+						        rts,
 						        packetDetails.rssi, lqi, plen);
 						comms_deliver((comms_layer_t *)&radio_iface, &msg);
 					}
