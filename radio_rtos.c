@@ -208,7 +208,6 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-
 	RAIL_TxPower_t power = -140; // Testsystem power: -16.8dBm
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
@@ -223,11 +222,11 @@ RAIL_Handle_t radio_rail_init() {
 	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
-				 | RAIL_EVENT_RX_ACK_TIMEOUT
-				 | RAIL_EVENTS_TX_COMPLETION
-				 | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
-				 | RAIL_EVENT_TXACK_PACKET_SENT
-				 ;
+	                     | RAIL_EVENT_RX_ACK_TIMEOUT
+	                     | RAIL_EVENTS_TX_COMPLETION
+	                     | RAIL_EVENT_RX_PACKET_RECEIVED | RAIL_EVENT_RX_FIFO_OVERFLOW
+	                     | RAIL_EVENT_TXACK_PACKET_SENT
+	                     ;
 	//           | RAIL_EVENTS_RX_COMPLETION
 
 	RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
@@ -339,7 +338,13 @@ static void radio_send_message(comms_msg_t* msg) {
 
 	count = comms_get_payload_length(iface, msg);
 	src = comms_am_get_source(iface, msg);
+	if(src == 0) {
+		src = radio_address;
+	}
 	dst = comms_am_get_destination(iface, msg);
+	if(dst == 0) {
+		warn1("dest not set");
+	}
 	amid = comms_get_packet_type(iface, msg);
 	// is ack and not broadcast
 	if(comms_is_ack_required(iface, msg) && (dst != 0xFFFF)) {
@@ -521,7 +526,8 @@ void radio_poll() {
 
 	// RX busy handling -----------------------------------------------------
 	if(rx_busy || rx_overflow) {
-		uint8_t rxb, rxo;
+		uint8_t rxb __attribute__((unused));
+		uint8_t rxo __attribute__((unused));
 		vPortEnterCritical();
 		rxb = rx_busy;
 		rxo = rx_overflow;
@@ -533,7 +539,8 @@ void radio_poll() {
 
 	// RX failure handling -----------------------------------------------------
 	if((rx_abort > 100) || rx_fail) {
-		uint8_t rxa, rxf;
+		uint8_t rxa __attribute__((unused));
+		uint8_t rxf __attribute__((unused));
 		vPortEnterCritical();
 		rxa = rx_abort;
 		rxf = rx_fail;
@@ -545,7 +552,7 @@ void radio_poll() {
 
 	// RX frame error handling -----------------------------------------------------
 	if(rx_frame_error) {
-		uint8_t rxfe;
+		uint8_t rxfe __attribute__((unused));
 		vPortEnterCritical();
 		rxfe = rx_frame_error;
 		rx_frame_error = 0;
@@ -580,7 +587,7 @@ void radio_poll() {
 
 	// TX ack sent -----------------------------------------------------------------
 	if(tx_ack_sent) {
-		uint8_t tas;
+		uint8_t tas __attribute__((unused));
 		vPortEnterCritical();
 		tas = tx_ack_sent;
 		tx_ack_sent = 0;
@@ -600,8 +607,7 @@ void radio_poll() {
 				uint8_t buffer[256] = {0};
 				RAIL_RxPacketDetails_t timeDetails = packetDetails;
 				bool rts_valid = timeDetails.timeReceived.timePosition != RAIL_PACKET_TIME_INVALID;
-				uint32_t rts = 0;
-				uint32_t rtsd = 0;
+				uint32_t rts = 0; // timeReceived.packetTime
 
 				if((packetInfo.packetBytes > 11) && (packetInfo.firstPortionData == NULL)) {
 					while(1);
@@ -620,7 +626,6 @@ void radio_poll() {
 				}
 
 				if(rts_valid) {
-					rtsd = timeDetails.timeReceived.packetTime;
 					// Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
 					timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
 					// Want the earliest timestamp possible
@@ -701,9 +706,9 @@ void radio_poll() {
 						comms_am_set_destination((comms_layer_t *)&radio_iface, &msg, dest);
 						comms_am_set_source((comms_layer_t *)&radio_iface, &msg, source);
 
-						debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32"/%"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8,
+						debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":", &(buffer[12]), 8,
 						        source, dest, amid,
-						        rts, rtsd,
+						        rts,
 						        packetDetails.rssi, lqi, plen);
 						comms_deliver((comms_layer_t *)&radio_iface, &msg);
 					}
