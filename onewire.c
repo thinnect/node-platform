@@ -1,7 +1,9 @@
 /*
  * Universal EFR32 onewire.
  *
- * NB: Series 0 has not been tested.
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Raido Pahtma
  */
 #include "onewire.h"
 

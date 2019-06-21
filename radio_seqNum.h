@@ -2,7 +2,7 @@
 * Radio message sequence number checking and storage.
 *
 * Copyright Thinnect.
-* @license <PROPRIETARY>
+* @license MIT
 * @author Konstantin Bilozor
 */
 #pragma once

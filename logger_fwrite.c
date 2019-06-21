@@ -4,6 +4,7 @@
  * Minimal implementation, thread-safe and blocking,
  * consider using the LDMA version instead.
  *
+ * Copyright Thinnect Inc.
  * @author Konstantin Bilozor, Raido Pahtma
  * @license MIT
 */

@@ -1,3 +1,10 @@
+/*
+ * Onewire BUS API.
+ *
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Raido Pahtma
+ */
 #pragma once
 
 #include <stdint.h>

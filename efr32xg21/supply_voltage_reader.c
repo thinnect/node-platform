@@ -1,6 +1,11 @@
 /**
-  @file supply_voltage_reader.c
-  @brief Measure AVDD, pretend it is the supply voltage.
+ * Measure AVDD, pretend it is the supply voltage.
+ *
+ * Solution based on SiLabs Series2 ADC code examples.
+ *
+ * Copyright Thinnect Inc.
+ * @author Raido Pahtma
+ * @license MIT
 */
 #include "supply_voltage_reader.h"
 
@@ -10,6 +15,7 @@
 #include "em_cmu.h"
 
 #include <stdio.h>
+
 
 #include "loglevels.h"
 #define __MODUUL__ "svr"

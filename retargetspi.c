@@ -3,7 +3,7 @@
  *
  * Copyright Thinnect Inc.
  * @license MIT
- * @author Raido Pahtma
+ * @author Raido Pahtma, Veiko Rütter
  */
 
 #include "retargetspi.h"

@@ -2,9 +2,10 @@
 * Radio message sequence number checking and storage.
 *
 * Copyright Thinnect.
-* @license <PROPRIETARY>
+* @license MIT
 * @author Konstantin Bilozor
 */
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -19,7 +20,7 @@ seqSrcTs_t srcAddrTable[SEQNUM_TABLE_SIZE];
 
 
 bool radio_seqNum_save(uint16_t src, uint8_t seqNum, uint16_t currTime) {
-    
+
     uint8_t srcPos = 0;
 
     for (srcPos=0; srcPos<SEQNUM_TABLE_SIZE; srcPos++) {
