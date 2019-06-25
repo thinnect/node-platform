@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+void spi_flash_init(void);
+
 void spi_flash_cmd(uint8_t cmd);
 uint8_t spi_flash_status(void);
 void spi_flash_wait_busy(void);
