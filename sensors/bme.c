@@ -26,7 +26,7 @@ static void delay_ms(uint32_t period){
 bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 	struct bme280_dev bme280;
 	uint8_t bme280_Id;
-	uint32_t result;
+	int8_t result;
 	struct bme280_data comp_data;
 
 	bme280.dev_id = BME280_I2C_ADDR_PRIM;
@@ -45,7 +45,7 @@ bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 	}
 
 	result = bme280_init(&bme280);
-	debug1("INIT: %u", (unsigned int)result);
+	debug1("INIT: %d", (int)result);
 
 	bme280.settings.osr_h = BME280_OVERSAMPLING_1X;
 	bme280.settings.osr_p = BME280_OVERSAMPLING_16X;
@@ -54,15 +54,15 @@ bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 	bme280.settings.standby_time = BME280_STANDBY_TIME_62_5_MS;
 
 	result = bme280_set_sensor_settings(BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_STANDBY_SEL | BME280_FILTER_SEL, &bme280);
-	debug1("SET SENSOR SETTINGS: %u", (unsigned int)result);
+	debug1("SET SENSOR SETTINGS: %u", (int)result);
 
 	result = bme280_set_sensor_mode(BME280_NORMAL_MODE, &bme280);
-	debug1("SET SENSOR MODE: %u", (unsigned int)result);
+	debug1("SET SENSOR MODE: %u", (int)result);
 
 	delay_ms(80);
 
 	result = bme280_get_sensor_data(BME280_ALL, &comp_data, &bme280);
-	debug1("GET SENSOR DATA: %u", (unsigned int)result);
+	debug1("GET SENSOR DATA: %u", (int)result);
 
 	if(temperature != NULL){
 		*temperature = comp_data.temperature;
@@ -74,5 +74,5 @@ bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 		*humidity = comp_data.humidity;
 	}
 
-	return(true);
+	return result >= 0;
 }
