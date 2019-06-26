@@ -29,7 +29,7 @@ void RETARGET_I2CInit() {
 	GPIO_PinModeSet(RETARGET_I2C_SDA_PORT, RETARGET_I2C_SDA_PIN, gpioModeWiredAndPullUpFilter, 1);
 	GPIO_PinModeSet(RETARGET_I2C_SCL_PORT, RETARGET_I2C_SCL_PIN, gpioModeWiredAndPullUpFilter, 1);
 
-	#if defined(GPIO_USART_ROUTEEN_TXPEN) // Series 2
+	#if defined(GPIO_I2C_ROUTEEN_SCLPEN) // Series 2
 		GPIO->I2CROUTE[RETARGET_I2C_INDEX].SDAROUTE =
 		                               (RETARGET_I2C_SDA_PORT << _GPIO_I2C_SDAROUTE_PORT_SHIFT)
 		                             | (RETARGET_I2C_SDA_PIN << _GPIO_I2C_SDAROUTE_PIN_SHIFT);
