@@ -107,11 +107,6 @@ bool watchdog_enable(uint32_t timeout_ms) {
     #error("MCU series are not set. Select which series MCU is used!");
 #endif
 
-    if (WDOGn_IsEnabled(DEFAULT_WDOG)) {
-        warn1("Watchdog is already enabled, period is: %"PRIu32, watchdog_period());
-        return false;
-    }
-    
     wdogInit.debugRun = true;
     wdogInit.em2Run = true;
 
