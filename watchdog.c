@@ -1,5 +1,5 @@
 /*
- * MCU watchdog API.
+ * MCU watchdog implementation.
  *
  * Copyright Thinnect Inc.
  * @license MIT
@@ -17,11 +17,11 @@
 #include "log.h"
 
 
-uint32_t wdogTimeout;
-uint32_t warnPeriod;
+static uint32_t wdogTimeout;
+static uint32_t warnPeriod;
 
-WDOG_Init_TypeDef wdogInit = WDOG_INIT_DEFAULT;
-watchdog_warning_f* warnCb;
+static WDOG_Init_TypeDef wdogInit = WDOG_INIT_DEFAULT;
+static watchdog_warning_f* warnCb;
 
 
 void WDOG0_IRQHandler(void) {
@@ -104,8 +104,7 @@ bool watchdog_enable(uint32_t timeout_ms) {
 #elif EFR32_SERIES2
     CMU_ClockSelectSet(cmuClock_WDOG0, cmuSelect_ULFRCO);
 #else
-    err1("Select which series MCU is used!");
-    return false;
+    #error("MCU series are not set. Select which series MCU is used!");
 #endif
 
     if (WDOGn_IsEnabled(DEFAULT_WDOG)) {
@@ -119,6 +118,8 @@ bool watchdog_enable(uint32_t timeout_ms) {
     per = wdog_periodSelect(timeout_ms);
     if (per >= wdogPeriod_9) {
         wdogInit.perSel = per;
+    } else {
+        return false;
     }
 
     WDOGn_Init(DEFAULT_WDOG, &wdogInit);
