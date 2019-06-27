@@ -19,7 +19,7 @@
 #include "log.h"
 
 
-void RETARGET_I2CInit(){
+void RETARGET_I2CInit() {
 	I2C_Init_TypeDef i2cInit = I2C_INIT_DEFAULT;
 	i2cInit.freq = I2C_FREQ_FAST_MAX;
 
@@ -29,7 +29,7 @@ void RETARGET_I2CInit(){
 	GPIO_PinModeSet(RETARGET_I2C_SDA_PORT, RETARGET_I2C_SDA_PIN, gpioModeWiredAndPullUpFilter, 1);
 	GPIO_PinModeSet(RETARGET_I2C_SCL_PORT, RETARGET_I2C_SCL_PIN, gpioModeWiredAndPullUpFilter, 1);
 
-	#if defined(GPIO_USART_ROUTEEN_TXPEN) // Series 2
+	#if defined(GPIO_I2C_ROUTEEN_SCLPEN) // Series 2
 		GPIO->I2CROUTE[RETARGET_I2C_INDEX].SDAROUTE =
 		                               (RETARGET_I2C_SDA_PORT << _GPIO_I2C_SDAROUTE_PORT_SHIFT)
 		                             | (RETARGET_I2C_SDA_PIN << _GPIO_I2C_SDAROUTE_PIN_SHIFT);
@@ -43,7 +43,6 @@ void RETARGET_I2CInit(){
 		RETARGET_I2C_DEV->ROUTELOC0 = (RETARGET_I2C_SDA_LOC)|(RETARGET_I2C_SCL_LOC);
 	#endif
 
-
 	// I2C power on
 	#ifdef RETARGET_I2C_PWR_PORT
 		GPIO_PinModeSet(RETARGET_I2C_PWR_PORT, RETARGET_I2C_PWR_PIN, gpioModePushPull, 1);
@@ -54,7 +53,7 @@ void RETARGET_I2CInit(){
 	I2C_Init(RETARGET_I2C_DEV, &i2cInit);
 }
 
-void RETARGET_I2CDeinit(){
+void RETARGET_I2CDeinit() {
 	CMU_ClockEnable(RETARGET_I2C_CLOCK, false);
 	// Using PA5 (SDA, 5) and PA4 (SCL, 3)
 	GPIO_PinModeSet(RETARGET_I2C_SDA_PORT, RETARGET_I2C_SDA_PIN, gpioModeDisabled, 0);

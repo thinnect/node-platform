@@ -1,10 +1,14 @@
 /**
-  @file supply_voltage_reader.c
-  @brief Measure supply voltage.
-
-  From https://www.silabs.com/community/wireless/bluetooth/knowledge-base.entry.html/2017/06/02/reporting_batteryvo-QRNB
+ * Measure AVDD, pretend it is the supply voltage.
+ *
+ * Solution based on:
+ * https://www.silabs.com/community/wireless/bluetooth/knowledge-base.entry.html/2017/06/02/reporting_batteryvo-QRNB
+ *
+ * Copyright Thinnect Inc.
+ * @author Tarmo Kuuse, Konstantin Bilozor
+ * @license MIT
+ *
 */
-
 #include "supply_voltage_reader.h"
 
 #include "em_device.h"

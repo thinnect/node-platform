@@ -1,10 +1,17 @@
+/*
+ * Microcontroller platform initialization and general functions API.
+ *
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Raido Pahtma
+ */
 #ifndef _PLATFORM_H_
 #define _PLATFORM_H_
 
 #include <stdint.h>
 
 /*
- * Handle coming out of reset and setting up the chip and clocks.
+ * Handle coming out of reset and setting up the chip and clocks, some GPIO.
  * @return reset cause
  */
 uint32_t PLATFORM_Init();

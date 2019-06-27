@@ -6,6 +6,7 @@
  *
  * Logger is thread-safe.
  *
+ * Copyright Thinnect Inc.
  * @author Konstantin Bilozor, Raido Pahtma
  * @license MIT
  */

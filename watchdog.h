@@ -14,6 +14,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifndef WATCHDOG_PERIOD
+#define WATCHDOG_PERIOD 4000
+#endif
+
 /**
  * Feed the watchdog.
  */
@@ -23,8 +27,10 @@ void watchdog_feed();
  * Enable the watchdog with the specified period.
  *
  * @param timeout_ms Watchdog timeout in milliseconds.
+ *
+ * @return true if the warning was enabled, false otherwise
  */
-void watchdog_enable(uint32_t timeout_ms);
+bool watchdog_enable(uint32_t timeout_ms);
 
 /**
  * Check the watchdog period and state.

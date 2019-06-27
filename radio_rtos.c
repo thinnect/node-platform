@@ -1,3 +1,11 @@
+/*
+ * Mist-comm compatible SiLabs RAIL based radio layer for FreeRTOS.
+ *
+ * Copyright Thinnect Inc.
+ * @license MIT
+ * @author Veiko Rütter, Konstantin Bilozor, Raido Pahtma
+ */
+
 #include "radio.h"
 #include <stdio.h>
 #include <stdint.h>
