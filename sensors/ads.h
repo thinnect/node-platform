@@ -12,8 +12,11 @@
 #define AIN2   2
 #define AIN3   3
 
+#define ADS_DEVICE_ADDR       0x48
+#define ADS_CONVERSION_REG    0x00
+#define ADS_CONFIG_REG        0x01
 #define ADS_DEFAULT_RANGE_MV  6144
-#define ADS_BITS_NUM 11
+#define ADS_BITS_NUM          11
 
 /**
  * Read data from ADS1015

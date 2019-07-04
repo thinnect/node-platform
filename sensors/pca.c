@@ -23,11 +23,11 @@ void pca9536_init(uint8_t direction) {
 	uint8_t regv;
 
 	regv = direction;
-	RETARGET_I2CWrite(0x41, 0x03, &regv, 1);
+	RETARGET_I2CWrite(PCA_DEVICE_ADDR, PCA_CONFIG_REG, &regv, 1);
 	mtimer_sleep(10);
 
 	regv = 0; // Set all output values to 0
-	RETARGET_I2CWrite(0x41, 0x01, &regv, 1);
+	RETARGET_I2CWrite(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);
 }
 
@@ -35,11 +35,11 @@ void pca9536_setOutput(uint8_t pin) {
 	uint8_t regv;
 	
 	// Read current status
-	RETARGET_I2CRead(0x41, 0x01, &regv, 1);
+	RETARGET_I2CRead(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);
 
 	regv = regv | (0x01 << pin);
-	RETARGET_I2CWrite(0x41, 0x01, &regv, 1);
+	RETARGET_I2CWrite(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);
 }
 
@@ -47,10 +47,10 @@ void pca9536_clearOutput(uint8_t pin) {
 	uint8_t regv;
 
 	// Read current status
-	RETARGET_I2CRead(0x41, 0x01, &regv, 1);
+	RETARGET_I2CRead(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);
 
 	regv = regv & ~(0x01 << pin);
-	RETARGET_I2CWrite(0x41, 0x01, &regv, 1);
+	RETARGET_I2CWrite(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);
 }

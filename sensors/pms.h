@@ -30,6 +30,6 @@ void pms7003_init();
  * @param pm2_5 PM2.5 concentration unit ug/m3
  * @param pm10  PM10 concentration unit ug/m3
  *
- * @return Returns true if reading is succesfull, false otherwise
+ * @return Returns true if reading is succesful, false otherwise
  */
 bool pms7003_read(uint16_t *pm1_0, uint16_t *pm2_5, uint16_t *pm10);

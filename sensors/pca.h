@@ -12,6 +12,12 @@
 #define IO2 	2
 #define IO3 	3
 
+#define PCA_DEVICE_ADDR      0x41
+#define PCA_INPUT_PORT_REG   0x00
+#define PCA_OUTPUT_PORT_REG  0x01
+#define PCA_POLARITY_INV_REG 0x02
+#define PCA_CONFIG_REG       0x03
+
 /**
  * Configure IO pins
  *

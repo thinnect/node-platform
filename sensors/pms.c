@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <inttypes.h>
 
 #include "em_usart.h"
@@ -28,7 +29,7 @@ void USART1_RX_IRQHandler(void)
 {
   pmsBuf[RxBufferIndex++] = USART_Rx(USART1);
 
-  // Stop once we've filled up RxBuffer
+  // Wrap once RxBuffer is filled
   if (RxBufferIndex == PMS_BUF_LEN) {
     RxBufferIndex = 0;
   }
@@ -65,11 +66,12 @@ void init_USART1(void)
 }
 
 void pms7003_init() {
+	// Set to passive mode command. PMS7003 protocol:
+	// | 0x42 | 0x4d | CMD | DATAH | DATAL | CCH | CCL |
 	uint8_t set_passive[PMS_CMD_LEN] = {0x42, 0x4D, 0xE1, 0x00, 0x00, 0x01, 0x70};
 
 	init_USART1();
 
-	// set to passive mode
 	for(uint8_t i=0; i<PMS_CMD_LEN; i++) {
 		USART_Tx(USART1, set_passive[i]);
 	}
@@ -78,8 +80,12 @@ void pms7003_init() {
 
 bool pms7003_read(uint16_t *pm1_0, uint16_t *pm2_5, uint16_t *pm10) {
 	uint16_t sum = 0;
+	// Read sensor in passive mode command. PMS7003 protocol:
+	// | 0x42 | 0x4d | CMD | DATAH | DATAL | CCH | CCL |
 	uint8_t passive_read[PMS_CMD_LEN] = {0x42, 0x4D, 0xE2, 0x00, 0x00, 0x01, 0x71};
 	init_USART1();
+
+	memset(pmsBuf, 0, PMS_BUF_LEN);
 
 	for(uint8_t i=0; i<PMS_CMD_LEN; i++) {
 		USART_Tx(USART1, passive_read[i]);

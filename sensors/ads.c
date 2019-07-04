@@ -26,10 +26,10 @@ uint16_t ads1015_read(uint8_t input) {
 
 	regv[0] = 0x40 | (input << 4); // FSR=6,144V, input between AINx and GND
 	regv[1] = 0x83; // Default configuration
-	RETARGET_I2CWrite(0x48, 0x01, regv, 2);
+	RETARGET_I2CWrite(ADS_DEVICE_ADDR, ADS_CONFIG_REG, regv, 2);
 	mtimer_sleep(10);
 
-	RETARGET_I2CRead(0x48, 0x00, regv, 2);
+	RETARGET_I2CRead(ADS_DEVICE_ADDR, ADS_CONVERSION_REG, regv, 2);
 
 	val = ((regv[0] << 8) + regv[1]) >> 4;
 	val = (val * ADS_DEFAULT_RANGE_MV) >> ADS_BITS_NUM;
