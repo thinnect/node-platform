@@ -27,7 +27,18 @@ static uint8_t RxBufferIndex = 0;
 
 void USART1_RX_IRQHandler(void)
 {
-  pmsBuf[RxBufferIndex++] = USART_Rx(USART1);
+  pmsBuf[RxBufferIndex] = USART_Rx(USART1);
+
+  // Look for PMS packet start
+  if (RxBufferIndex != 0) {
+    if ((pmsBuf[RxBufferIndex-1] == PMS_START_BYTE_H) &&
+      (pmsBuf[RxBufferIndex] == PMS_START_BYTE_L)) {
+      pmsBuf[0] = PMS_START_BYTE_H;
+      pmsBuf[1] = PMS_START_BYTE_L;
+      RxBufferIndex = 1;
+    }
+  }
+  RxBufferIndex++;
 
   // Wrap once RxBuffer is filled
   if (RxBufferIndex == PMS_BUF_LEN) {
@@ -91,7 +102,7 @@ bool pms7003_read(uint16_t *pm1_0, uint16_t *pm2_5, uint16_t *pm10) {
 		USART_Tx(USART1, passive_read[i]);
 	}
 
-	mtimer_sleep(500);
+	mtimer_sleep(1000);
 	RxBufferIndex = 0;
 
 	for(uint8_t i=0; i<(PMS_BUF_LEN-2); i++) {
