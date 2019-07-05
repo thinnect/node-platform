@@ -30,11 +30,13 @@ void USART1_RX_IRQHandler(void)
   pmsBuf[RxBufferIndex] = USART_Rx(USART1);
 
   // Look for PMS packet start
-  if ((pmsBuf[RxBufferIndex-1] == PMS_START_BYTE_H) &&
-  	(pmsBuf[RxBufferIndex] == PMS_START_BYTE_L)) {
-  	pmsBuf[0] = PMS_START_BYTE_H;
-  	pmsBuf[1] = PMS_START_BYTE_L;
-  	RxBufferIndex = 1;
+  if (RxBufferIndex != 0) {
+    if ((pmsBuf[RxBufferIndex-1] == PMS_START_BYTE_H) &&
+      (pmsBuf[RxBufferIndex] == PMS_START_BYTE_L)) {
+      pmsBuf[0] = PMS_START_BYTE_H;
+      pmsBuf[1] = PMS_START_BYTE_L;
+      RxBufferIndex = 1;
+    }
   }
   RxBufferIndex++;
 
