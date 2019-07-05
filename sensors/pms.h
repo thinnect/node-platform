@@ -18,6 +18,9 @@
 #define PMS_CC_HIGH     30
 #define PMS_CC_LOW      31
 
+#define PMS_START_BYTE_H  0x42
+#define PMS_START_BYTE_L  0x4D
+
 /**
  * Init PMS to passive mode
  */
