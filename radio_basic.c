@@ -239,8 +239,8 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 	}
 	buffer[2] = 0x88;
 	buffer[3] = radio_tx_num++;
-	buffer[4] = 0x22;
-	buffer[5] = 0x00;
+	buffer[4] = ((radio_pan_id >> 0) & 0xFF);
+	buffer[5] = ((radio_pan_id >> 8) & 0xFF);
 	buffer[6] = ((dst >> 0) & 0xFF);
 	buffer[7] = ((dst >> 8) & 0xFF);
 	buffer[8] = ((src >> 0) & 0xFF);
