@@ -1,7 +1,7 @@
 /**
- * Driver for GPIO multiplexer PCA9536 from Texas Instruments 
+ * Driver for GPIO multiplexer PCA9536 from Texas Instruments
  *
- * @copyright Thinnect
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor
  * @license MIT
  */
@@ -33,7 +33,7 @@ void pca9536_init(uint8_t direction) {
 
 void pca9536_setOutput(uint8_t pin) {
 	uint8_t regv;
-	
+
 	// Read current status
 	RETARGET_I2CRead(PCA_DEVICE_ADDR, PCA_OUTPUT_PORT_REG, &regv, 1);
 	mtimer_sleep(10);

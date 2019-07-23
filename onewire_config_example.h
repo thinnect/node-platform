@@ -1,3 +1,6 @@
+/**
+ * Example configuration for the onewire module.
+ */
 #pragma once
 
 #define ONEWIRE_PERIPHERAL_CLOCK 38400000LU

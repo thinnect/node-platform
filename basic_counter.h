@@ -1,7 +1,7 @@
 /*
  * Basic counter API.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Veiko Rütter, Raido Pahtma
  */

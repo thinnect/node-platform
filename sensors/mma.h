@@ -4,7 +4,7 @@
  *
  * Currently only supports polling the Landscape/Portrait register.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @author Raido Pahtma
  * @license MIT
  */

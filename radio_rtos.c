@@ -1,7 +1,7 @@
 /*
  * Mist-comm compatible SiLabs RAIL based radio layer for FreeRTOS.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Veiko Rütter, Konstantin Bilozor, Raido Pahtma
  */

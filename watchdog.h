@@ -5,7 +5,7 @@
  * will reset the MCU. Optionally a reminder may be configured to notify before
  * an actual reset occurs.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma
  */

@@ -1,7 +1,7 @@
 /**
- * Driver for GPIO multiplexer PCA9536 from Texas Instruments 
+ * Driver for GPIO multiplexer PCA9536 from Texas Instruments
  *
- * @copyright Thinnect
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor
  * @license MIT
  */

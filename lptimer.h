@@ -14,7 +14,7 @@
  * several callbacks are pending, however already running callbacks are not
  * interrupted. The default and lowest priority level is 0.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma
  */

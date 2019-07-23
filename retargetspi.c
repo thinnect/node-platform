@@ -1,7 +1,7 @@
 /*
  * SiLabs RETARGET_Serial inspired SPI retargeting solution.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma, Veiko Rütter
  */
@@ -13,7 +13,6 @@
 #include "em_cmu.h"
 #include "em_gpio.h"
 #include "em_usart.h"
-#include "mask.h"
 
 void RETARGET_SpiInit() {
 	USART_InitSync_TypeDef init = USART_INITSYNC_DEFAULT;

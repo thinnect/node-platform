@@ -4,7 +4,7 @@
  * Solution based on:
  * https://www.silabs.com/community/wireless/bluetooth/knowledge-base.entry.html/2017/06/02/reporting_batteryvo-QRNB
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @author Tarmo Kuuse, Konstantin Bilozor
  * @license MIT
  *

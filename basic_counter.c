@@ -1,7 +1,7 @@
 /*
  * Really basic counter on top of emlib TIMER0.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma
  */

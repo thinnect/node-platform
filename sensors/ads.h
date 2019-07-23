@@ -1,7 +1,7 @@
 /**
- * Driver for ADC ADS1015 from Texas Instruments 
+ * Driver for ADC ADS1015 from Texas Instruments
  *
- * @copyright Thinnect
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor
  * @license MIT
  */

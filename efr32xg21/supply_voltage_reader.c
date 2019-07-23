@@ -3,7 +3,7 @@
  *
  * Solution based on SiLabs Series2 ADC code examples.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @author Raido Pahtma
  * @license MIT
 */

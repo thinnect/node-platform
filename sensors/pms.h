@@ -1,7 +1,7 @@
 /**
  * Driver for particle sensor PMS7003
  *
- * @copyright Thinnect
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor
  * @license MIT
  */

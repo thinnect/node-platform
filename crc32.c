@@ -1,5 +1,10 @@
-// @license MIT
-
+/*
+ * CRC-32 algorithm implementation.
+ *
+ * Copyright Thinnect Inc. 2019
+ * @license MIT
+ * @author Veiko Rütter, Raido Pahtma
+ */
 #include "crc32.h"
 #include <stdint.h>
 
@@ -105,4 +110,3 @@ uint32_t crc32_block(uint32_t crc, const void *data, uint32_t len){
 	}
 	return(crc);
 }
-

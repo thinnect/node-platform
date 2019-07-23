@@ -10,7 +10,7 @@
  * a correct approach would start a new transfer from the LDMA done interrupt or
  * a deferred interrupt handler.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor, Raido Pahtma
  * @license MIT
 */

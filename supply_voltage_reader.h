@@ -1,7 +1,7 @@
 /*
  * MCU supply voltage reader API.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma
  */

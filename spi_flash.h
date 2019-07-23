@@ -1,3 +1,10 @@
+/*
+ * Basic JEDEC SPI flash wrapper API.
+ *
+ * Copyright Thinnect Inc. 2019
+ * @license MIT
+ * @author Veiko Rütter, Raido Pahtma
+ */
 #ifndef _SPI_FLASH_H_
 #define _SPI_FLASH_H_
 

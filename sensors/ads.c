@@ -1,7 +1,7 @@
 /**
- * Driver for ADC ADS1015 from Texas Instruments 
+ * Driver for ADC ADS1015 from Texas Instruments
  *
- * @copyright Thinnect
+ * Copyright Thinnect Inc. 2019
  * @author Konstantin Bilozor
  * @license MIT
  */
@@ -37,5 +37,5 @@ uint16_t ads1015_read(uint8_t input) {
 
 	mtimer_sleep(10);
 
-	return val;	
+	return val;
 }

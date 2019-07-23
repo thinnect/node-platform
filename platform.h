@@ -1,7 +1,7 @@
 /*
  * Microcontroller platform initialization and general functions API.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma
  */

@@ -1,7 +1,7 @@
 /*
  * MCU watchdog implementation.
  *
- * Copyright Thinnect Inc.
+ * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Konstantin Bilozor
  */

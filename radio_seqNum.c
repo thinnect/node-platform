@@ -1,7 +1,7 @@
 /**
 * Radio message sequence number checking and storage.
 *
-* Copyright Thinnect.
+* Copyright Thinnect Inc. 2019
 * @license MIT
 * @author Konstantin Bilozor
 */

@@ -1,3 +1,10 @@
+/*
+ * Basic JEDEC SPI flash wrapper.
+ *
+ * Copyright Thinnect Inc. 2019
+ * @license MIT
+ * @author Veiko Rütter, Raido Pahtma
+ */
 #include "spi_flash.h"
 #include "retargetspi.h"
 #include <stdio.h>
@@ -87,4 +94,3 @@ int32_t spi_flash_erase(uint32_t addr, uint32_t size){ // sector 4KB (0x20), hal
 	spi_flash_wait_busy();
 	return(0);
 }
-
