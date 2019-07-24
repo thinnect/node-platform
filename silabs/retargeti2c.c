@@ -113,34 +113,31 @@ int8_t RETARGET_I2CWrite(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uin
 	return((int) 0);
 }
 
-int8_t RETARGET_I2CWriteRead(uint8_t devAddr, uint8_t* wData, uint16_t wcount, uint8_t *rData, uint16_t rcount) {
+int8_t RETARGET_I2CWriteRead(uint8_t devAddr, uint8_t* wData, uint16_t wCount, uint8_t *rData, uint16_t rCount) {
 	I2C_TransferSeq_TypeDef seq;
 	I2C_TransferReturn_TypeDef ret;
 	uint32_t timeout = 300000;
 
 	seq.addr = devAddr << 1;
-	if(wcount == 0) {
+	if(wCount == 0) {
 		seq.flags = I2C_FLAG_READ;
-		seq.buf[0].len  = rcount;
+		seq.buf[0].len  = rCount;
 		seq.buf[0].data = rData;
 		seq.buf[1].len  = 0;
 		seq.buf[1].data = NULL;
-	}
-	else if(rcount == 0) {
+	} else if(rCount == 0) {
 		seq.flags = I2C_FLAG_WRITE;
-		seq.buf[0].len  = wcount;
+		seq.buf[0].len  = wCount;
 		seq.buf[0].data = wData;
 		seq.buf[1].len  = 0;
 		seq.buf[1].data = NULL;
-	}
-	else {
+	} else {
 		seq.flags = I2C_FLAG_WRITE_READ;
-		seq.buf[0].len  = wcount;
+		seq.buf[0].len  = wCount;
 		seq.buf[0].data = wData;
-		seq.buf[1].len  = rcount;
+		seq.buf[1].len  = rCount;
 		seq.buf[1].data = rData;
 	}
-
 
 	ret = I2C_TransferInit(RETARGET_I2C_DEV, &seq);
 	while (ret == i2cTransferInProgress && timeout--) {
