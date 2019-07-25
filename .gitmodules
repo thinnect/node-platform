@@ -1,0 +1,4 @@
+[submodule "zoo/jtbr.endianness"]
+	path = zoo/jtbr.endianness
+	url = https://gist.github.com/7a43e6281e6cca353b33ee501421860c.git
+	branch = master
