@@ -470,7 +470,7 @@ static void signal_send_done(comms_error_t err) {
 	else err1("snt ? e:%d", err);
 }
 
-void radio_poll() {
+void radio_run() {
 	// If an exception has occurred and RAIL is broken -------------------------
 	if(radio_restart == true) {
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
@@ -732,8 +732,19 @@ void radio_poll() {
 
 static void radio_thread(void *p) {
 	while(true) {
-		radio_poll();
+		radio_run();
 	}
+}
+
+
+bool radio_poll() {
+	bool busy;
+
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
+	busy = (radio_msg_sending != NULL)||(radio_msg_queue_head != NULL);
+	osMutexRelease(radio_mutex);
+
+	return busy;
 }
 
 
