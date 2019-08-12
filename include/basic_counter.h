@@ -1,5 +1,7 @@
 /*
- * Basic counter API.
+ * A simple timer with millisecond resolution.
+ *
+ * Counts time passed (since it was started) and returns it when asked.
  *
  * Copyright Thinnect Inc. 2019
  * @license MIT
