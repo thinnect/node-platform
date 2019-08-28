@@ -11,7 +11,6 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include "rail.h"
-#include "rail_config.h"
 #include "rail_ieee802154.h"
 #include "rail_types.h"
 #include "rail_chip_specific.h"
@@ -19,8 +18,14 @@
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
 
+#ifdef RAIL_USE_CUSTOM_CONFIG
+// rail_config can be generated with SimplicityStudio, but it is not commonly
+// necessary as an 802.15.4 standard conf is present in RAIL by default
+#include "rail_config.h"
+#endif//RAIL_USE_CUSTOM_CONFIG
+
 #include "cmsis_os2.h"
-// Because including FreeRTOS conflicts with SiLabs
+// Because including FreeRTOS conflicts with SiLabs RAIL
 extern void vPortEnterCritical();
 extern void vPortExitCritical();
 
@@ -69,12 +74,13 @@ static uint8_t radio_send_retries;
 static void radio_thread(void *p);
 
 static RAIL_Handle_t radio_rail_init(); // Internal RAIL initialization procedures
+
+// The main RAIL callback function
 static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events);
-static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry);
-static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle);
+
 static uint32_t radio_timestamp();
-static void radio_send_timeout_callback(void* argument);
-static void radio_resend_timeout_callback(void* argument);
+static void radio_send_timeout_cb(void* argument);
+static void radio_resend_timeout_cb(void* argument);
 
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user);
 
@@ -84,6 +90,17 @@ static volatile radio_queue_element_t* radio_msg_queue_head;
 static volatile radio_queue_element_t* radio_msg_sending;
 
 osMessageQueueId_t rxQueue;
+
+static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle) {
+}
+
+#ifdef RAIL_USE_CUSTOM_CONFIG
+// Only define the config-changed callback if we actually give it to RAIL with a custom config
+static void radio_rail_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
+}
+#endif//RAIL_USE_CUSTOM_CONFIG
+
+
 
 comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_channel = channel;
@@ -110,8 +127,8 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_rail_handle = radio_rail_init();
 	if(radio_rail_handle != NULL) {
 		radio_mutex = osMutexNew(NULL);
-		radio_send_timeout_timer = osTimerNew(&radio_send_timeout_callback, osTimerOnce, NULL, NULL);
-		radio_resend_timer = osTimerNew(&radio_resend_timeout_callback, osTimerOnce, NULL, NULL);
+		radio_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
+		radio_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
 		const osThreadAttr_t radio_thread_attr = {
 			.name = "radio"
 		};
@@ -225,9 +242,10 @@ RAIL_Handle_t radio_rail_init() {
 	// Initialize Radio Calibrations
 	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
-	// Load the channel configuration for the generated radio settings
-	//RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
-	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
+	// Load custom channel configuration for the generated radio settings
+	#ifdef RAIL_USE_CUSTOM_CONFIG
+		RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_config_changed_cb);
+	#endif//RAIL_USE_CUSTOM_CONFIG
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
 	                     | RAIL_EVENT_RX_ACK_TIMEOUT
@@ -285,7 +303,7 @@ static uint32_t radio_timestamp() {
 	return osKernelGetTickCount();
 }
 
-static void radio_send_timeout_callback(void* argument) {
+static void radio_send_timeout_cb(void* argument) {
 	while(osMutexAcquire(radio_mutex, 1000) != osOK);
 	if(radio_msg_sending != NULL) {
 		radio_send_timeout = true;
@@ -418,7 +436,7 @@ static void radio_send_message(comms_msg_t* msg) {
 	osMutexRelease(radio_mutex);
 }
 
-static void radio_resend_timeout_callback(void* argument) {
+static void radio_resend_timeout_cb(void* argument) {
 	uint8_t retu = comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) + 1;
 	comms_set_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg, retu);
 	radio_send_message(radio_msg_sending->msg);
@@ -855,10 +873,4 @@ void RAILCb_AssertFailed(RAIL_Handle_t railHandle, RAIL_AssertErrorCodes_t error
 		global_rail_error_code = errorCode;
 		while(1);
 	}
-}
-
-static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
-}
-
-static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle) {
 }
