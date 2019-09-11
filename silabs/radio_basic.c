@@ -11,7 +11,6 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include "rail.h"
-#include "rail_config.h"
 #include "rail_ieee802154.h"
 #include "rail_types.h"
 #include "rail_chip_specific.h"
@@ -159,7 +158,7 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = 170; // Testsystem power: -13dBm
+	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM; // RAIL uses deci-dBm
 	RAIL_GetTxPowerConfig(radio_rail_handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(radio_rail_handle, txPowerConfig.mode, power);
 

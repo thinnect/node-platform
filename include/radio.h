@@ -11,6 +11,12 @@
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
+// Specify default RFPower set during radio_init. dBm, can use float values.
+#ifndef DEFAULT_RFPOWER_DBM
+#warning "Using DEFAULT_RFPOWER_DBM = 0"
+#define DEFAULT_RFPOWER_DBM 0
+#endif//DEFAULT_RFPOWER_DBM
+
 extern comms_layer_am_t radio_iface;
 extern uint16_t radio_address;
 
