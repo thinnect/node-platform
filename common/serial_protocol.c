@@ -1,0 +1,154 @@
+/**
+ */
+
+#include "serial_protocol.h"
+
+#include "serial_hdlc.h"
+
+#include <string.h>
+
+#define SERIAL_PROTOCOL_PACKET    0x45
+#define SERIAL_PROTOCOL_ACKPACKET 0x44
+#define SERIAL_PROTOCOL_ACK       0x43
+
+#pragma pack(push, 1)
+typedef struct serial_protocol_ack
+{
+    uint8_t protocol; // SERIAL_PROTOCOL_ACK - 0x43
+    uint8_t seq_num;
+    // uint8_t crc[2]; - handled by lower layer
+} serial_protocol_ack_t;
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct serial_protocol_ackpacket
+{
+    uint8_t protocol; // SERIAL_PROTOCOL_ACKPACKET - 0x44
+    uint8_t seq_num;
+    uint8_t payload[];
+    // uint8_t crc[2]; - handled by lower layer
+} serial_protocol_ackpacket_t;
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct serial_protocol_packet
+{
+    uint8_t protocol; // SERIAL_PROTOCOL_PACKET - 0x45
+    uint8_t payload[];
+} serial_protocol_packet_t;
+#pragma pack(pop)
+
+#include "loglevels.h"
+#define __MODUUL__ "serp"
+#define __LOG_LEVEL__ (LOG_LEVEL_serial_protocol & BASE_LOG_LEVEL)
+#include "log.h"
+
+static bool m_tx_ack_wait;
+static uint8_t m_tx_seq_num;
+static uint8_t m_rx_seq_num;
+
+static serial_receive_f * p_receiver;
+
+void serial_protocol_init (serial_receive_f* receiver)
+{
+    m_tx_ack_wait = false;
+    m_tx_seq_num = 0;
+    m_rx_seq_num = 0;
+    p_receiver = receiver;
+}
+
+void serial_protocol_receive (const uint8_t data[], uint8_t length)
+{
+    if (length > 0)
+    {
+        uint8_t protocol = data[0];
+        switch (protocol)
+        {
+            case SERIAL_PROTOCOL_ACK: // TODO not finalized
+                if (sizeof(serial_protocol_ack_t) <= length)
+                {
+                    serial_protocol_ack_t * ack = (serial_protocol_ack_t*)data;
+                    if (m_tx_ack_wait)
+                    {
+                        if(ack->seq_num == m_tx_seq_num)
+                        {
+                            m_tx_ack_wait = false;
+                            debug1("ack %02X", (unsigned int)ack->seq_num);
+                            // TODO signal send-done?
+                        }
+                        else
+                        {
+                            warn1("tx ack %02X != %02X",
+                                  (unsigned int)ack->seq_num,
+                                  (unsigned int)m_tx_seq_num);
+                        }
+                    }
+                    else
+                    {
+                        warn1("ack? %02X", (unsigned int)ack->seq_num);
+                    }
+                }
+            break;
+
+            case SERIAL_PROTOCOL_ACKPACKET:
+                if (sizeof(serial_protocol_ackpacket_t) <= length)
+                {
+                    bool duplicate = false;
+                    serial_protocol_ackpacket_t* packet = (serial_protocol_ackpacket_t*)data;
+                    if (packet->seq_num != m_rx_seq_num)
+                    {
+                        m_rx_seq_num = packet->seq_num;
+                    }
+                    else // Duplicate?
+                    {
+                        // NOTE: default sf implementation is broken and always
+                        //       sends seqnum 0.
+                        //       Additionally seqnums should include a TTL
+                        #ifndef SERIAL_PROTOCOL_IGNORE_SEQNUM
+                        duplicate = true;
+                        #endif//SERIAL_PROTOCOL_IGNORE_SEQNUM
+                    }
+
+                    serial_protocol_ack_t ack = {SERIAL_PROTOCOL_ACK, packet->seq_num};
+                    serial_hdlc_send((uint8_t*)&ack, sizeof(serial_protocol_ack_t));
+
+                    if (duplicate)
+                    {
+                        warn1("dup %02X", (unsigned int)(packet->seq_num));
+                    }
+                    else
+                    {
+                        p_receiver(&(data[sizeof(serial_protocol_ackpacket_t)]),
+                                   length - sizeof(serial_protocol_ackpacket_t));
+                    }
+                }
+            break;
+
+            case SERIAL_PROTOCOL_PACKET: // TODO implement support
+                if (sizeof(serial_protocol_packet_t) <= length)
+                {
+                    warn1("TODO regular packet");
+                }
+            break;
+        }
+    }
+    // if ackpacket, CRC passes, send ack?
+}
+
+bool serial_protocol_send (const uint8_t data[], uint8_t length, bool ack)
+{
+    if (ack)
+    {
+        // TODO implement
+        return false;
+    }
+    else
+    {
+        uint8_t payload[length + sizeof(serial_protocol_packet_t)];
+        serial_protocol_packet_t* packet = (serial_protocol_packet_t*)payload;
+        packet->protocol = SERIAL_PROTOCOL_PACKET;
+        memcpy(packet->payload, data, length);
+        serial_hdlc_send(payload, sizeof(payload));
+        return true;
+    }
+}
