@@ -12,6 +12,8 @@
 #include "mist_comm_am.h"
 
 // Specify default RFPower set during radio_init. dBm, can use float values.
+// For TX output +17dBm, CFLAGS += -DDEFAULT_RFPOWER_DBM=17
+// For a really weak -3.2dBm, CFLAGS += -DDEFAULT_RFPOWER_DBM=-3.2
 #ifndef DEFAULT_RFPOWER_DBM
 #warning "Using DEFAULT_RFPOWER_DBM = 0"
 #define DEFAULT_RFPOWER_DBM 0
