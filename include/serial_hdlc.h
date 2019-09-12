@@ -5,7 +5,8 @@
  * @license MIT
  * @author Raido Pahtma
  */
-#pragma once
+#ifndef SERIAL_HDLC_H_
+#define SERIAL_HDLC_H_
 
 #include <stdint.h>
 
@@ -21,4 +22,4 @@ void serial_hdlc_disable (void);
 
 int serial_hdlc_send (const uint8_t* out, uint8_t len);
 
-//int RETARGET_HdlcRead (uint8_t* out, uint8_t len);
+#endif//SERIAL_HDLC_H_
