@@ -1,3 +1,11 @@
+/**
+* Sensirion SCD30 I2C helper functions
+*
+* Copyright Thinnect Inc. 2019
+* @license MIT
+* @author Veiko Rütter
+*/
+
 #ifndef _SENSIRION_H_
 #define _SENSIRION_H_
 
