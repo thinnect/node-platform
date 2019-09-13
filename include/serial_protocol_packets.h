@@ -26,6 +26,7 @@ typedef struct serial_protocol_ackpacket
 {
     uint8_t protocol; // SERIAL_PROTOCOL_ACKPACKET - 0x44
     uint8_t seq_num;
+    uint8_t dispatch;
     uint8_t payload[]; // First byte of the "payload" would be the dispatcher
     // uint8_t crc[2]; - handled by lower layer
 } serial_protocol_ackpacket_t;
@@ -35,6 +36,7 @@ typedef struct serial_protocol_ackpacket
 typedef struct serial_protocol_packet
 {
     uint8_t protocol; // SERIAL_PROTOCOL_PACKET - 0x45
+    uint8_t dispatch;
     uint8_t payload[]; // First byte of the "payload" would be the dispatcher
 } serial_protocol_packet_t;
 #pragma pack(pop)
