@@ -1,6 +1,11 @@
 /*
  * SiLabs HDLC-UART for TinyOS Serial protocol.
  *
+ * Uses a thread for callbacks, has an RX queue.
+ *
+ * Normal TX happens in the user thread, but acks may be sent using the
+ * callback thread.
+ *
  * Copyright Thinnect Inc. 2019
  * @license MIT
  * @author Raido Pahtma, Konstantin Bilozor
@@ -179,7 +184,6 @@ static void serial_hdlc_thread (void * arg)
                     {
                         p_receiver(decoder->data, plen);
                     }
-                    // TODO signal callback
                 }
                 else
                 {
