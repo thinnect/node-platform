@@ -12,6 +12,8 @@
 #define SERIAL_PROTOCOL_ACKPACKET 0x44
 #define SERIAL_PROTOCOL_ACK       0x43
 
+#include <stdint.h>
+
 #pragma pack(push, 1)
 typedef struct serial_protocol_ack
 {

@@ -24,17 +24,19 @@
  *
  * You are allowed to send (acks) from this callback.
  *
+ * @param rcvr Receiver pointer, set during init.
  * @param data received data, escapes already done.
  * @param length received data length.
  */
-typedef void serial_hdlc_receive_f (const uint8_t data[], uint8_t length);
+typedef void serial_hdlc_receive_f (void * rcvr, const uint8_t data[], uint8_t length);
 
 /**
  * Initialize the HDLC layer, provide a callback pointer.
  *
- * @param receiver Receiver callback.
+ * @param rcvf Receiver callback function.
+ * @param rcvr Receiver object, passed to callback.
  */
-void serial_hdlc_init (serial_hdlc_receive_f * receiver);
+void serial_hdlc_init (serial_hdlc_receive_f * rcvf, void * rcvr);
 
 /**
  * Enable an already initialized HDLC layer.

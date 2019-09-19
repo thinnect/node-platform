@@ -42,7 +42,8 @@ static hdlc_decoder_t m_decoders[HDLC_RX_QUEUE_LENGTH];
 static osMutexId_t m_send_mutex;
 
 static hdlc_decoder_t * p_decoder;
-static serial_hdlc_receive_f * p_receiver;
+static serial_hdlc_receive_f * mf_receiver;
+static void * mp_receiver;
 
 static int mErrorsHdlc = 0;
 static int mErrorsQueue = 0;
@@ -51,7 +52,7 @@ static int mErrorsEmpty = 0;
 
 static void serial_hdlc_thread ();
 
-void serial_hdlc_init (serial_hdlc_receive_f * receiver)
+void serial_hdlc_init (serial_hdlc_receive_f * rcvf, void* rcvr)
 {
     USART_InitAsync_TypeDef init = USART_INITASYNC_DEFAULT;
     init.enable = usartDisable;
@@ -111,7 +112,8 @@ void serial_hdlc_init (serial_hdlc_receive_f * receiver)
     }
     hdlc_decoder_init(p_decoder);
 
-    p_receiver = receiver;
+    mf_receiver = rcvf;
+    mp_receiver = rcvr;
 }
 
 void serial_hdlc_enable ()
@@ -180,9 +182,9 @@ static void serial_hdlc_thread (void * arg)
                 if (pcrc == ccrc)
                 {
                     debug1("crc ok");
-                    if (NULL != p_receiver)
+                    if (NULL != mf_receiver)
                     {
-                        p_receiver(decoder->data, plen);
+                        mf_receiver(mp_receiver, decoder->data, plen);
                     }
                 }
                 else
