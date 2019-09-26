@@ -35,17 +35,10 @@
 /* SiLabs library includes. */
 #include "em_cmu.h"
 #include "em_rtcc.h"
+#include "em_emu.h"
 #include "em_rmu.h"
-#include "em_int.h"
+#include "em_core.h"
 #include "em_letimer.h"
-#include "sleep.h"
-
-/* SEE THE COMMENTS ABOVE THE DEFINITION OF configCREATE_LOW_POWER_DEMO IN
-FreeRTOSConfig.h
-This file contains functions that will override the default implementations
-in the RTOS port layer.  Therefore only build this file if the low power demo
-is being built. */
-#if( configCREATE_LOW_POWER_DEMO == 1 )
 
 /* When lpUSE_TEST_TIMER is 1 a second timer will be used to bring the MCU out
 of its low power state before the expected idle time has completed.  This is
@@ -200,7 +193,8 @@ TickType_t xModifiableIdleTime;
 
 	/* Enter a critical section but don't use the taskENTER_CRITICAL() method as
 	that will mask interrupts that should exit sleep mode. */
-	INT_Disable();
+	CORE_DECLARE_IRQ_STATE;
+	CORE_ENTER_ATOMIC();
 	__asm volatile( "dsb" );
 	__asm volatile( "isb" );
 
@@ -221,7 +215,7 @@ TickType_t xModifiableIdleTime;
 
 		/* Re-enable interrupts - see comments above the RTCC_Enable() call
 		above. */
-		INT_Enable();
+		CORE_EXIT_ATOMIC();
 	}
 	else
 	{
@@ -240,7 +234,7 @@ TickType_t xModifiableIdleTime;
 		if( xModifiableIdleTime > 0 )
 		{
 			__asm volatile( "dsb" );
-			SLEEP_Sleep();
+			EMU_EnterEM2(true);
 			__asm volatile( "isb" );
 		}
 
@@ -254,9 +248,9 @@ TickType_t xModifiableIdleTime;
 		RTCC_Enable( false );
 		ulCountAfterSleep = RTCC_CounterGet();
 
-		/* Re-enable interrupts - see comments above the INT_Enable() call
+		/* Re-enable interrupts - see comments above the CORE_EXIT_ATOMIC() call
 		above. */
-		INT_Enable();
+		CORE_EXIT_ATOMIC();
 		__asm volatile( "dsb" );
 		__asm volatile( "isb" );
 
@@ -377,8 +371,3 @@ void RTCC_IRQHandler( void )
 	}
 
 #endif /* lpUSE_TEST_TIMER == 1 */
-
-
-
-
-#endif /* ( configCREATE_LOW_POWER_DEMO == 1 ) */
