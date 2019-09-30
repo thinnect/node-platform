@@ -28,7 +28,7 @@ int logger_ldma(const char *ptr, int len);
 
 
 #if defined(LOGGER_LDMA_UART0)
-// Logging will be through LEUART0
+// Logging will be through USART0
 #elif defined(LOGGER_LDMA_UART1)
 // Logging will be through USART1
 #elif defined(LOGGER_LDMA_UART2)
