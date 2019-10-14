@@ -40,6 +40,8 @@
 #include "em_core.h"
 #include "em_letimer.h"
 
+#include "em_gpio.h"
+
 /* When lpUSE_TEST_TIMER is 1 a second timer will be used to bring the MCU out
 of its low power state before the expected idle time has completed.  This is
 done purely for test coverage purposes. */
@@ -125,7 +127,9 @@ void vPortSetupTimerInterrupt( void )
 	CMU_ClockEnable( cmuClock_CORELE, true );
 
 	/* Use LFXO. */
-	CMU_ClockSelectSet( cmuClock_LFE, cmuSelect_LFXO );
+	CMU_ClockSelectSet( cmuClock_LFE, cmuSelect_LFRCO );
+
+	GPIO_PinModeSet(gpioPortA, 0, gpioModePushPull, 0);
 
 	/* Enable clock to the RTC module. */
 	CMU_ClockEnable( cmuClock_RTCC, true );
@@ -148,16 +152,7 @@ void vPortSetupTimerInterrupt( void )
 	NVIC_EnableIRQ( RTCC_IRQn );
 	RTCC_IntEnable( RTCC_IEN_CC1 );
 	RTCC_Enable( true );
-
-	#if( lpUSE_TEST_TIMER == 1 )
-	{
-		void prvSetupTestTimer( void );
-
-		/* A second timer is used to test the path where the MCU is brought out
-		of a low power state by a timer other than the tick timer. */
-		prvSetupTestTimer();
-	}
-	#endif
+	//GPIO_PinOutSet(gpioPortA, 0);
 }
 /*-----------------------------------------------------------*/
 
@@ -166,6 +161,8 @@ void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 uint32_t ulReloadValue, ulCompleteTickPeriods, ulCountAfterSleep;
 eSleepModeStatus eSleepAction;
 TickType_t xModifiableIdleTime;
+GPIO_PinOutSet(gpioPortA, 0);
+CORE_DECLARE_IRQ_STATE;
 
 	/* THIS FUNCTION IS CALLED WITH THE SCHEDULER SUSPENDED. */
 
@@ -193,8 +190,8 @@ TickType_t xModifiableIdleTime;
 
 	/* Enter a critical section but don't use the taskENTER_CRITICAL() method as
 	that will mask interrupts that should exit sleep mode. */
-	CORE_DECLARE_IRQ_STATE;
-	CORE_ENTER_ATOMIC();
+	
+	CORE_ENTER_CRITICAL();
 	__asm volatile( "dsb" );
 	__asm volatile( "isb" );
 
@@ -215,7 +212,7 @@ TickType_t xModifiableIdleTime;
 
 		/* Re-enable interrupts - see comments above the RTCC_Enable() call
 		above. */
-		CORE_EXIT_ATOMIC();
+		CORE_EXIT_CRITICAL();
 	}
 	else
 	{
@@ -234,7 +231,8 @@ TickType_t xModifiableIdleTime;
 		if( xModifiableIdleTime > 0 )
 		{
 			__asm volatile( "dsb" );
-			EMU_EnterEM2(true);
+			//SLEEP_Sleep();
+			EMU_EnterEM1();
 			__asm volatile( "isb" );
 		}
 
@@ -250,11 +248,11 @@ TickType_t xModifiableIdleTime;
 
 		/* Re-enable interrupts - see comments above the CORE_EXIT_ATOMIC() call
 		above. */
-		CORE_EXIT_ATOMIC();
+		CORE_EXIT_CRITICAL();
 		__asm volatile( "dsb" );
 		__asm volatile( "isb" );
 
-		if( ulTickFlag != pdFALSE )
+		if( (ulTickFlag != pdFALSE))
 		{
 			/* The tick interrupt has already executed, although because this
 			function is called with the scheduler suspended the actual tick
@@ -294,6 +292,7 @@ TickType_t xModifiableIdleTime;
 		remained in a low power state. */
 		vTaskStepTick( ulCompleteTickPeriods );
 	}
+	GPIO_PinOutClear(gpioPortA, 0);
 }
 /*-----------------------------------------------------------*/
 
