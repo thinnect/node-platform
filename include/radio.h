@@ -19,6 +19,23 @@
 #define DEFAULT_RFPOWER_DBM 0
 #endif//DEFAULT_RFPOWER_DBM
 
+#define RAIL_CB_FLAG        1
+#define SEND_FLAG           2
+#define FAIL_FLAG           4
+#define ACK_WAIT_FLAG       8
+#define RESEND_FLAG         16
+#define RAIL_SEND_DONE      32
+#define RAIL_SEND_BUSY      64
+#define RAIL_SEND_FAIL      128
+#define RAIL_RX_BUSY        256
+#define RAIL_RX_SUCCESS     512
+#define RAIL_RX_OVERFLOW    1024
+#define RAIL_RX_FRAME_ERROR 2048
+#define RAIL_RX_ABORT       4096
+#define RAIL_RX_FAIL        8192
+#define RAIL_TXACK_SENT     16384
+#define RAIL_RXACK_TIMEOUT  32768
+
 extern comms_layer_am_t radio_iface;
 extern uint16_t radio_address;
 
@@ -36,8 +53,8 @@ bool radio_poll(void);
 // queue -----------------------------------------------------------------------
 typedef struct radio_queue_element radio_queue_element_t;
 struct radio_queue_element {
-	comms_msg_t* msg;
-	comms_send_done_f *send_done;
-	void *user;
-	radio_queue_element_t* next;
+    comms_msg_t* msg;
+    comms_send_done_f *send_done;
+    void *user;
+    radio_queue_element_t* next;
 };
