@@ -198,7 +198,7 @@ RAIL_Handle_t radio_rail_init() {
 	NVIC_SetPriority(AGC_IRQn, priority);
 	NVIC_SetPriority(PROTIMER_IRQn, priority);
 	NVIC_SetPriority(SYNTH_IRQn, priority);
-	//NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
+	NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
 
 	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
 	if(handle == NULL) {
@@ -760,8 +760,8 @@ static void radio_thread(void *p) {
 	}
 	while(true) {
 		GPIO_PinOutSet(gpioPortA, 1);
-		ulNotifiedValue = osThreadFlagsWait(RAIL_CB_FLAG | SEND_FLAG | FAIL_FLAG
-			| ACK_WAIT_FLAG | RESEND_FLAG | RAIL_SEND_DONE | RAIL_RX_SUCCESS | RAIL_RX_OVERFLOW
+		ulNotifiedValue = osThreadFlagsWait(RAIL_CB_FLAG | SEND_FLAG | FAIL_FLAG | RAIL_SEND_BUSY
+			| ACK_WAIT_FLAG | RESEND_FLAG | RAIL_SEND_DONE | RAIL_RX_SUCCESS | RAIL_RX_OVERFLOW | RAIL_RX_BUSY
 			| RAIL_RX_FRAME_ERROR | RAIL_RX_ABORT | RAIL_RX_FAIL | RAIL_TXACK_SENT | RAIL_RXACK_TIMEOUT,
 			osFlagsWaitAny, 10000);
 		if ((ulNotifiedValue & 0x80000000) == 0x80000000) {

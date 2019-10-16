@@ -35,7 +35,7 @@
 /* SiLabs library includes. */
 #include "em_cmu.h"
 #include "em_rtcc.h"
-#include "em_emu.h"
+#include "sleep.h"
 #include "em_rmu.h"
 #include "em_core.h"
 #include "em_letimer.h"
@@ -134,6 +134,9 @@ void vPortSetupTimerInterrupt( void )
 	/* Enable clock to the RTC module. */
 	CMU_ClockEnable( cmuClock_RTCC, true );
 
+	SLEEP_Init(NULL, NULL);
+	SLEEP_SleepBlockBegin(sleepEM2);
+
 	/* Use channel 1 to generate the RTOS tick interrupt. */
 	RTCC_ChannelCCVSet( lpRTCC_CHANNEL, ulReloadValueForOneTick );
 
@@ -152,13 +155,13 @@ void vPortSetupTimerInterrupt( void )
 	NVIC_EnableIRQ( RTCC_IRQn );
 	RTCC_IntEnable( RTCC_IEN_CC1 );
 	RTCC_Enable( true );
-	//GPIO_PinOutSet(gpioPortA, 0);
 }
 /*-----------------------------------------------------------*/
 
 void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 {
-uint32_t ulReloadValue, ulCompleteTickPeriods, ulCountAfterSleep;
+uint32_t ulReloadValue, ulCompleteTickPeriods, ulCountAfterSleep, aftslp;
+uint32_t intCrossPending;
 eSleepModeStatus eSleepAction;
 TickType_t xModifiableIdleTime;
 GPIO_PinOutSet(gpioPortA, 0);
@@ -231,8 +234,7 @@ CORE_DECLARE_IRQ_STATE;
 		if( xModifiableIdleTime > 0 )
 		{
 			__asm volatile( "dsb" );
-			//SLEEP_Sleep();
-			EMU_EnterEM1();
+			SLEEP_Sleep();
 			__asm volatile( "isb" );
 		}
 
@@ -243,8 +245,13 @@ CORE_DECLARE_IRQ_STATE;
 		for as best it can be, but using the tickless mode will	inevitably
 		result in some tiny drift of the time maintained by the	kernel with
 		respect to calendar time. */
+		intCrossPending = RTCC_IntGet() & _RTCC_IEN_CC1_MASK;
 		RTCC_Enable( false );
 		ulCountAfterSleep = RTCC_CounterGet();
+		
+		aftslp = ulCountAfterSleep;
+
+		intCrossPending = ((RTCC_IntGet() & _RTCC_IEN_CC1_MASK) != intCrossPending);
 
 		/* Re-enable interrupts - see comments above the CORE_EXIT_ATOMIC() call
 		above. */
@@ -252,7 +259,7 @@ CORE_DECLARE_IRQ_STATE;
 		__asm volatile( "dsb" );
 		__asm volatile( "isb" );
 
-		if( (ulTickFlag != pdFALSE))
+		if((ulTickFlag != pdFALSE) && (intCrossPending == 0U))
 		{
 			/* The tick interrupt has already executed, although because this
 			function is called with the scheduler suspended the actual tick
@@ -264,6 +271,9 @@ CORE_DECLARE_IRQ_STATE;
 			actual stepping of the tick appears later in this function. */
 			ulCompleteTickPeriods = xExpectedIdleTime - 1UL;
 
+			if (ulCompleteTickPeriods > (xExpectedIdleTime+1))
+				while(1) ;
+
 			/* The interrupt should have reset the CCV value. */
 			configASSERT( RTCC_ChannelCCVGet( lpRTCC_CHANNEL ) == ulReloadValueForOneTick );
 		}
@@ -273,6 +283,7 @@ CORE_DECLARE_IRQ_STATE;
 			many complete tick periods passed while the processor was
 			sleeping? */
 			ulCompleteTickPeriods = ulCountAfterSleep / ulReloadValueForOneTick;
+
 
 			/* The next interrupt is configured to occur at whatever fraction of
 			the current tick period remains by setting the reload value back to
@@ -287,6 +298,8 @@ CORE_DECLARE_IRQ_STATE;
 		will get set to the value required to generate exactly one tick period
 		the next time the RTC interrupt executes. */
 		RTCC_Enable( true );
+		if (ulCompleteTickPeriods > (xExpectedIdleTime+1))
+				while(1) ;
 
 		/* Wind the tick forward by the number of tick periods that the CPU
 		remained in a low power state. */
@@ -317,6 +330,7 @@ void RTCC_IRQHandler( void )
 		{
 			/* Pend a context switch. */
 			portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+
 		}
 	}
 	portENABLE_INTERRUPTS();
