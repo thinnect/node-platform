@@ -797,6 +797,7 @@ static void radio_thread(void *p) {
 		while(1) ; // Did this ever happened?
 	}
 	while(true) {
+		GPIO_PinOutSet(gpioPortA, 1);
 		if (start_radio) {
 			start_radio = false;
 			start_done_f((comms_layer_t *)&radio_iface, COMMS_STARTED, NULL);
