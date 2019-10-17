@@ -303,6 +303,8 @@ void RTCC_IRQHandler( void )
 {
 	ulTickFlag = pdTRUE;
 
+	// Errata seems to sometimes apply without prescaler as well, so force to 0
+	RTCC_CounterSet( 0 );
 	if( RTCC_ChannelCCVGet( lpRTCC_CHANNEL ) != ulReloadValueForOneTick )
 	{
 		/* Set RTC interrupt to one RTOS tick period. */
