@@ -135,7 +135,7 @@ void vPortSetupTimerInterrupt( void )
 	CMU_ClockEnable( cmuClock_RTCC, true );
 
 	SLEEP_Init(NULL, NULL);
-	SLEEP_SleepBlockBegin(sleepEM2);
+	SLEEP_SleepBlockBegin(sleepEM3);
 
 	/* Use channel 1 to generate the RTOS tick interrupt. */
 	RTCC_ChannelCCVSet( lpRTCC_CHANNEL, ulReloadValueForOneTick );
