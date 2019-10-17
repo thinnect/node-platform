@@ -160,12 +160,12 @@ void vPortSetupTimerInterrupt( void )
 
 void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
 {
-uint32_t ulReloadValue, ulCompleteTickPeriods, ulCountAfterSleep, aftslp;
-uint32_t intCrossPending;
-eSleepModeStatus eSleepAction;
-TickType_t xModifiableIdleTime;
-GPIO_PinOutSet(gpioPortA, 0);
-CORE_DECLARE_IRQ_STATE;
+	uint32_t ulReloadValue, ulCompleteTickPeriods, ulCountAfterSleep;
+	eSleepModeStatus eSleepAction;
+	TickType_t xModifiableIdleTime;
+
+	GPIO_PinOutSet(gpioPortA, 0);
+	CORE_DECLARE_IRQ_STATE;
 
 	/* THIS FUNCTION IS CALLED WITH THE SCHEDULER SUSPENDED. */
 
@@ -193,7 +193,7 @@ CORE_DECLARE_IRQ_STATE;
 
 	/* Enter a critical section but don't use the taskENTER_CRITICAL() method as
 	that will mask interrupts that should exit sleep mode. */
-	
+
 	CORE_ENTER_CRITICAL();
 	__asm volatile( "dsb" );
 	__asm volatile( "isb" );
@@ -245,13 +245,8 @@ CORE_DECLARE_IRQ_STATE;
 		for as best it can be, but using the tickless mode will	inevitably
 		result in some tiny drift of the time maintained by the	kernel with
 		respect to calendar time. */
-		intCrossPending = RTCC_IntGet() & _RTCC_IEN_CC1_MASK;
 		RTCC_Enable( false );
 		ulCountAfterSleep = RTCC_CounterGet();
-		
-		aftslp = ulCountAfterSleep;
-
-		intCrossPending = ((RTCC_IntGet() & _RTCC_IEN_CC1_MASK) != intCrossPending);
 
 		/* Re-enable interrupts - see comments above the CORE_EXIT_ATOMIC() call
 		above. */
@@ -259,7 +254,7 @@ CORE_DECLARE_IRQ_STATE;
 		__asm volatile( "dsb" );
 		__asm volatile( "isb" );
 
-		if((ulTickFlag != pdFALSE) && (intCrossPending == 0U))
+		if(ulTickFlag != pdFALSE)
 		{
 			/* The tick interrupt has already executed, although because this
 			function is called with the scheduler suspended the actual tick
@@ -270,9 +265,6 @@ CORE_DECLARE_IRQ_STATE;
 			is stepped forward by one less than the	time spent sleeping.  The
 			actual stepping of the tick appears later in this function. */
 			ulCompleteTickPeriods = xExpectedIdleTime - 1UL;
-
-			if (ulCompleteTickPeriods > (xExpectedIdleTime+1))
-				while(1) ;
 
 			/* The interrupt should have reset the CCV value. */
 			configASSERT( RTCC_ChannelCCVGet( lpRTCC_CHANNEL ) == ulReloadValueForOneTick );
@@ -298,8 +290,6 @@ CORE_DECLARE_IRQ_STATE;
 		will get set to the value required to generate exactly one tick period
 		the next time the RTC interrupt executes. */
 		RTCC_Enable( true );
-		if (ulCompleteTickPeriods > (xExpectedIdleTime+1))
-				while(1) ;
 
 		/* Wind the tick forward by the number of tick periods that the CPU
 		remained in a low power state. */
