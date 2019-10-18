@@ -53,6 +53,7 @@ static RAIL_Status_t rx_fifo_status;
 static uint8_t radio_tx_num;
 static bool radio_tx_wait_ack;
 
+static volatile bool sleep_ready;
 static volatile bool stop_radio;
 static volatile bool start_radio;
 static volatile bool radio_send_done_flag;
@@ -117,6 +118,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	newSrcPos = 0;
 
 	start_radio = false;
+	sleep_ready = false;
 	stop_radio = false;
 	radio_msg_sending = NULL;
 	radio_msg_queue_head = NULL;
@@ -325,12 +327,12 @@ static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change
 
 	st = osThreadGetState(rtid);
 	if (st != osThreadRunning) {
+		osThreadResume(rtid);
 		debug1("radio start!");
 		start_done_f = start_done;
 		RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 		RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 		start_radio = true;
-		osThreadResume(rtid);
 		return COMMS_SUCCESS;
 	} else {
 		return COMMS_FAIL;
@@ -343,7 +345,6 @@ static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_
 	}
 	stop_done_f = stop_done;
 	debug1("RADIO STOP, IDIOT!!!!");
-	RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 	stop_radio = true;
 
 	return COMMS_SUCCESS;
@@ -351,6 +352,8 @@ static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_
 
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user) {
 	comms_error_t err = COMMS_FAIL;
+
+	sleep_ready = false;
 
 	if(iface != (comms_layer_iface_t *)&radio_iface) {
 		return(COMMS_EINVAL);
@@ -524,6 +527,7 @@ static void signal_send_done(comms_error_t err) {
 		}
 		logger(err==COMMS_SUCCESS?LOG_INFO1:LOG_WARN1, "snt %p e:%d t:%"PRIu32, msgp, err, radio_sent_time-radio_send_time);
 		send_done((comms_layer_t *)&radio_iface, msgp, err, user);
+		sleep_ready = true;
 	}
 	else err1("snt ? e:%d", err);
 }
@@ -789,7 +793,7 @@ void radio_run() {
 }
 
 static void radio_thread(void *p) {
-	uint32_t ulNotifiedValue;
+	comms_send_done_f *send_done = NULL;
 
 	rtid = osThreadGetId();
 	radio_rail_handle = radio_rail_init();
@@ -801,14 +805,36 @@ static void radio_thread(void *p) {
 		GPIO_PinOutSet(gpioPortA, 1);
 		if (start_radio) {
 			start_radio = false;
+			sleep_ready = true;
 			SLEEP_SleepBlockBegin(sleepEM1);
 			start_done_f((comms_layer_t *)&radio_iface, COMMS_STARTED, NULL);
 		}
 		if (stop_radio) {
-			stop_radio = false;
+			uint8_t i = 0;
+			RAIL_RxPacketHandle_t rxh;
+
 			SLEEP_SleepBlockEnd(sleepEM1);
-			stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
-			osThreadSuspend(rtid);
+			if ((sleep_ready) && (radio_msg_sending == NULL)) {
+				RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
+				stop_radio = false;
+				sleep_ready = false;
+			    if (radio_msg_queue_head != NULL) {
+			    	send_done = radio_msg_queue_head->send_done;
+			    	debug1("rmqh");
+			    	send_done((comms_layer_t *)&radio_iface, radio_msg_queue_head->msg,
+			    				COMMS_EOFF, radio_msg_queue_head->user);
+			    }
+				while (osOK == osMessageQueueGet(rxQueue, &rxh, NULL, 0)) {
+					warn1("msgCnt: %"PRIu8"", ++i);
+					RAIL_Status_t rst = RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
+					if(rst != RAIL_STATUS_NO_ERROR) {
+						warnb1("rst", &rst, sizeof(RAIL_Status_t));
+						while(1);
+					}
+				}
+				stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
+				osThreadSuspend(rtid);
+			}
 		}
 		radio_run();
 	}
@@ -845,7 +871,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 		}
 	}
 
-	if(events & RAIL_EVENTS_RX_COMPLETION) {
+	if((events & RAIL_EVENTS_RX_COMPLETION) && (stop_radio == false)) {
 		bool unhandled = true;
 		if(events & RAIL_EVENT_RX_PACKET_RECEIVED) {
 			RAIL_RxPacketHandle_t rxh = RAIL_HoldRxPacket(radio_rail_handle);
