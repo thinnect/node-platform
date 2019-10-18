@@ -16,6 +16,7 @@
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
+#include "sleep.h"
 
 #ifdef RAIL_USE_CUSTOM_CONFIG
 // rail_config can be generated with SimplicityStudio, but it is not commonly
@@ -800,10 +801,12 @@ static void radio_thread(void *p) {
 		GPIO_PinOutSet(gpioPortA, 1);
 		if (start_radio) {
 			start_radio = false;
+			SLEEP_SleepBlockBegin(sleepEM1);
 			start_done_f((comms_layer_t *)&radio_iface, COMMS_STARTED, NULL);
 		}
 		if (stop_radio) {
 			stop_radio = false;
+			SLEEP_SleepBlockEnd(sleepEM1);
 			stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
 			osThreadSuspend(rtid);
 		}
@@ -819,15 +822,6 @@ bool radio_poll() {
 	osMutexRelease(radio_mutex);
 
 	return busy;
-}
-
-
-void ackWaitTimer(RAIL_Handle_t cbArg)
-{
-	if (rx_ack_timeout == 0) {
-		comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
-		radio_send_done_flag = true;
-	}
 }
 
 
