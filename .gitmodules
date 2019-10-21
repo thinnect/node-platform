@@ -6,3 +6,7 @@
 	path = test/zoo/ThrowTheSwitch.Unity
 	url = https://github.com/ThrowTheSwitch/Unity.git
 	branch = master
+[submodule "test/zoo/thinnect.lll"]
+	path = test/zoo/thinnect.lll
+	url = https://github.com/thinnect/lll.git
+	branch = master
