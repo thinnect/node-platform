@@ -10,10 +10,11 @@ OBJS := $(SRCS:.c=.o)
 
 VPATH += ../../common
 
-all: test-uuid
+all: test-uuid.out
 
-test-uuid: $(OBJS)
+test-uuid.out: $(OBJS)
 	gcc $^ -o $@
+	- ./test-uuid.out
 
 %.o: %.c
 	gcc -c -o $@ $< $(CFLAGS)

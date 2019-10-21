@@ -2,3 +2,7 @@
 	path = test/uuid/zoo/jtbr.endianness
 	url = https://gist.github.com/7a43e6281e6cca353b33ee501421860c.git
 	branch = master
+[submodule "test/zoo/ThrowTheSwitch.Unity"]
+	path = test/zoo/ThrowTheSwitch.Unity
+	url = https://github.com/ThrowTheSwitch/Unity.git
+	branch = master
