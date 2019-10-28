@@ -812,7 +812,6 @@ void radio_run() {
 
 static void radio_thread(void *p) {
 	comms_send_done_f *send_done = NULL;
-	uint32_t fls;
 	osStatus_t oss;
 
 	rtid = osThreadGetId();
