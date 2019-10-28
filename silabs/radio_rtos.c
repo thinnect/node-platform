@@ -53,6 +53,8 @@ static RAIL_Status_t rx_fifo_status;
 static uint8_t radio_tx_num;
 static bool radio_tx_wait_ack;
 
+
+
 static volatile bool sleeping;
 static volatile bool sleep_ready;
 static volatile bool stop_radio;
@@ -242,7 +244,7 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = -DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
+	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
 
@@ -500,9 +502,6 @@ static void radio_resend_timeout_cb(void* argument) {
 	uint8_t retu = comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) + 1;
 	comms_set_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg, retu);
 	radio_send_message(radio_msg_sending->msg);
-	vPortEnterCritical();
-	rx_ack_timeout = false;
-	vPortExitCritical();
 }
 
 static void radio_send_next() {
@@ -659,6 +658,10 @@ void radio_run() {
 		}
 		osMutexRelease(radio_mutex);
 
+		vPortEnterCritical();
+		rx_ack_timeout = false;
+		vPortExitCritical();
+
 		logger(resend?LOG_DEBUG1:LOG_WARN1, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
 		       comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg),
 		       comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
@@ -666,9 +669,6 @@ void radio_run() {
 			radio_send_retries = 0;
 			osTimerStart(radio_resend_timer, comms_get_timeout((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
 		} else {
-			vPortEnterCritical();
-			rx_ack_timeout = false;
-			vPortExitCritical();
 			signal_send_done(COMMS_ENOACK);
 		}
 	}
@@ -852,7 +852,6 @@ static void radio_thread(void *p) {
 					}
 				}
 				stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
-				//fls = osThreadFlagsWait(RADIO_START_FLAG, osFlagsWaitAny, 10000);
 				oss = osThreadSuspend(rtid);
 				if (oss != osOK) {
 					err1("oss: %"PRIi32"", oss);
@@ -911,13 +910,14 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 					if(pi.packetBytes == 4) { // Inspect if it is an ack
 						uint8_t buffer[4];
 						RAIL_CopyRxPacket(buffer, &pi);
-						if((buffer[0] == 0x05) && (buffer[1] == 0x02)) {
-							if(radio_tx_wait_ack) { // Could also check the actual seq, but we assume RAIL does that
+						if((buffer[0] == 0x05) && (buffer[1] == 0x02) && (buffer[3] == radio_tx_num)) {
+							if(radio_tx_wait_ack) {
 								radio_send_done_flag = true;
 							}
 							RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
 							rxh = RAIL_RX_PACKET_HANDLE_INVALID;
 						}
+
 					}
 				}
 
@@ -960,7 +960,9 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 	}
 
 	if(events & RAIL_EVENT_RX_ACK_TIMEOUT) {
-		rx_ack_timeout = true;
+		if (radio_tx_wait_ack) {
+			rx_ack_timeout = true;
+		}
 	}
 
 	if(events & RAIL_EVENT_CAL_NEEDED) {
