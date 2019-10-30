@@ -505,11 +505,12 @@ static void radio_resend_timeout_cb(void* argument) {
 }
 
 static void radio_send_next() {
-
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
 	radio_msg_sending = radio_msg_queue_head;
 	radio_msg_queue_head = radio_msg_queue_head->next;
 	radio_send_retries = 0;
 	++radio_tx_num;
+	osMutexRelease(radio_mutex);
 	radio_send_message(radio_msg_sending->msg);
 }
 
@@ -829,6 +830,7 @@ static void radio_thread(void *p) {
 
 			SLEEP_SleepBlockEnd(sleepEM1);
 			if ((sleep_ready) && (radio_msg_sending == NULL)) {
+				radio_tx_wait_ack = false;
 				debug1("RADIO STOP, IDIOT!!!!");
 				RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 				stop_radio = false;
