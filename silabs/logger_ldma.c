@@ -40,9 +40,11 @@ static bool bufFull = false;
 
 static osMutexId_t log_mutex;
 
-
-#ifdef LOGGER_LDMA_UART0
+#ifdef LOGGER_LDMA_LEUART0
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_LEUART0_TXBL);
+#endif//LOGGER_LDMA_LEUART0
+#ifdef LOGGER_LDMA_UART0
+static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_USART0_TXBL);
 #endif//LOGGER_LDMA_UART0
 #ifdef LOGGER_LDMA_UART1
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_USART1_TXBL);
@@ -73,8 +75,11 @@ static void ldmaStart(void) {
 		ldmaReady = false;
 		osTimerStart(ldmaTimer, 1 + length/10); // TODO timer based on baudrate - currently assumes 10 bytes per millisecond
 
-		#ifdef LOGGER_LDMA_UART0
+		#ifdef LOGGER_LDMA_LEUART0
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &LEUART0->TXDATA, length);
+		#endif//LOGGER_LDMA_LEUART0
+		#ifdef LOGGER_LDMA_UART0
+		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &USART0->TXDATA, length);
 		#endif//LOGGER_LDMA_UART0
 		#ifdef LOGGER_LDMA_UART1
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &USART1->TXDATA, length);
