@@ -66,7 +66,9 @@ comms_layer_t* serial_activemessage_init (serial_activemessage_t* sam, serial_pr
 		                           sam);
 
 	// Set up the mist-comm layer
-	comms_am_create((comms_layer_t *)sam, 0, &serial_activemessage_send); // TODO should we be passing 0 as default address?
+	// TODO should we be passing 0 as default address?
+	// TODO start-stop handlers
+	comms_am_create((comms_layer_t *)sam, 0, &serial_activemessage_send, NULL, NULL);
 
 	// serial_activemessage_t is a valid comms_layer_t
 	return (comms_layer_t *)sam;
