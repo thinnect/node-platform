@@ -818,7 +818,7 @@ static void radio_thread(void *p) {
 	rtid = osThreadGetId();
 	radio_rail_handle = radio_rail_init();
 	if (radio_rail_handle == NULL) {
-		err1("radio init fail, boy!");
+		err1("radio init");
 		while(1) ; // Did this ever happened?
 	}
 	while(true) {
@@ -831,7 +831,7 @@ static void radio_thread(void *p) {
 			SLEEP_SleepBlockEnd(sleepEM1);
 			if ((sleep_ready) && (radio_msg_sending == NULL)) {
 				radio_tx_wait_ack = false;
-				debug1("RADIO STOP, IDIOT!!!!");
+				debug1("RADIO STOP");
 				RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 				stop_radio = false;
 				sleep_ready = false;
