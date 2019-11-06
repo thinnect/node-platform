@@ -17,6 +17,8 @@
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
+#include "hal_rtcc_drv.h"
+
 
 #ifdef RAIL_USE_CUSTOM_CONFIG
 // rail_config can be generated with SimplicityStudio, but it is not commonly
@@ -300,7 +302,8 @@ void radio_reenable() {
 }
 
 static uint32_t radio_timestamp() {
-	return osKernelGetTickCount();
+	// return osKernelGetTickCount();
+	return hal_timer_get_now();
 }
 
 static void radio_send_timeout_cb(void* argument) {
@@ -689,6 +692,9 @@ void radio_run() {
 					uint8_t plen;
 					uint8_t lqi = 0xFF;
 					uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
+
+					// DEBUG!!!
+					debug2("ts:%u", timestamp);
 
 					comms_init_message((comms_layer_t *)&radio_iface, &msg);
 					if(buffer[11] == 0x3D) {
