@@ -159,6 +159,7 @@ int serial_hdlc_send (const uint8_t* out, uint8_t len)
     {
         debug1("snd %02X", (unsigned int)data);
         USART_Tx(SERIAL_HDLC_UART, data);
+        while (!(SERIAL_HDLC_UART->STATUS & USART_STATUS_TXC));
     }
 
     osMutexRelease(m_send_mutex);
