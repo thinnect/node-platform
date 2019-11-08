@@ -693,9 +693,6 @@ void radio_run() {
 					uint8_t lqi = 0xFF;
 					uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
 
-					// DEBUG!!!
-					debug2("ts:%u", timestamp);
-
 					comms_init_message((comms_layer_t *)&radio_iface, &msg);
 					if(buffer[11] == 0x3D) {
 						int32_t diff = (buffer[packetInfo.packetBytes - 4] << 24) |
@@ -709,6 +706,8 @@ void radio_run() {
 						amid = buffer[(packetInfo.packetBytes-5)];
 						plen = packetInfo.packetBytes - 17;
 						if(rts_valid) {
+							// DEBUG!!!
+							debug2("ts:%u cur:%u rl:%u rts:%u diff:%d d+t:%u", timestamp, radio_timestamp(), RAIL_GetTime(), rts, diff, diff + timestamp);
 							comms_set_event_time((comms_layer_t *)&radio_iface, &msg, (uint32_t)(diff + timestamp));
 						}
 					} else {
