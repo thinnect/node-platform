@@ -402,6 +402,7 @@ static void radio_send_message(comms_msg_t* msg) {
 
 		evt_time = comms_get_event_time(iface, msg);
 		diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
+		debug2("evt:%u diff:%d", evt_time, diff);
 
 		buffer[12+count] = amid;
 		buffer[13+count] = diff>>24;
