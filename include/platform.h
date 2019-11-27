@@ -9,6 +9,7 @@
 #define _PLATFORM_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /*
  * Handle coming out of reset and setting up the chip and clocks, some GPIO.
@@ -43,5 +44,46 @@ void PLATFORM_LedsSet(uint8_t leds);
  * @return LEDs bitfield.
  */
 uint8_t PLATFORM_LedsGet();
+
+/**
+ * Configure platform BUTTON GPIO.
+ */
+void PLATFORM_ButtonPinInit();
+
+/**
+ * Get current button state.
+ * @return true if button currently pressed.
+ */
+bool PLATFORM_ButtonGet();
+
+/**
+ * Configure platform GPIO pins. 1...4
+ */
+void PLATFORM_GpioPinInit();
+
+/**
+ * Get GPIO pin
+ * @param pin_nr - pin number (1...4)
+ * @param return true if PIN is high.
+ */
+void PLATFORM_GetGpioPin(uint8_t pin_nr);
+
+/**
+ * Set GPIO pin
+ * @param pin_nr - pin number (1...4)
+ */
+void PLATFORM_SetGpioPin(uint8_t pin_nr);
+
+/**
+ * Clear GPIO pin
+ * @param pin_nr - pin number (1...4)
+ */
+void PLATFORM_ClearGpioPin(uint8_t pin_nr);
+
+/**
+ * Toggle GPIO pin
+ * @param pin_nr - pin number (1...4)
+ */
+void PLATFORM_ToggleGpioPin(uint8_t pin_nr);
 
 #endif//_PLATFORM_H_
