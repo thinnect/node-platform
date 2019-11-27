@@ -10,6 +10,13 @@
 
 #include "platform_io.h"
 
+#include "loglevels.h"
+#define __MODUUL__ "p_io"
+#define __LOG_LEVEL__ (LOG_LEVEL_platform_io & BASE_LOG_LEVEL)
+#include "log.h"
+
+static void platform_io_error (int line, int param);
+
 /******************************************************************************
  * Initialize platform LEDs. LEDs always go 0->1->2->...
  ******************************************************************************/
@@ -27,6 +34,7 @@ void PLATFORM_LedsInit ()
     #endif
 }
 
+#if PLATFORM_LED_COUNT > 0
 static void ledSet (GPIO_Port_TypeDef port, unsigned int pin, bool on)
 {
     #ifdef PLATFORM_LEDS_INVERTED
@@ -49,6 +57,7 @@ static void ledSet (GPIO_Port_TypeDef port, unsigned int pin, bool on)
         }
     #endif
 }
+#endif//PLATFORM_LED_COUNT > 0
 
 /******************************************************************************
  * Set LEDs to the specified value
@@ -88,6 +97,7 @@ void PLATFORM_LedsSet (uint8_t leds)
     #endif
 }
 
+#if PLATFORM_LED_COUNT > 0
 static uint8_t ledGet(GPIO_Port_TypeDef port, unsigned int pin)
 {
     #ifdef PLATFORM_LEDS_INVERTED
@@ -96,6 +106,7 @@ static uint8_t ledGet(GPIO_Port_TypeDef port, unsigned int pin)
         return GPIO_PinOutGet(port, pin);
     #endif
 }
+#endif//PLATFORM_LED_COUNT > 0
 
 /******************************************************************************
  * Get current LEDs state
@@ -122,7 +133,9 @@ uint8_t PLATFORM_LedsGet ()
  ******************************************************************************/
 void PLATFORM_GpioPinInit ()
 {
+    #if PLATFORM_PIN_COUNT > 0
     CMU_ClockEnable(cmuClock_GPIO, true);
+    #endif
     #ifdef PLATFORM_PIN1_PORT
     GPIO_PinModeSet(PLATFORM_PIN1_PORT, PLATFORM_PIN1_PIN, gpioModePushPull, 0);
     #endif
@@ -145,29 +158,32 @@ void PLATFORM_ClearGpioPin (uint8_t pin_nr)
 {
     switch (pin_nr)
     {
+        #ifdef PLATFORM_PIN1_PORT
         case 1:
-            #ifdef PLATFORM_PIN1_PORT
             GPIO_PinOutClear(PLATFORM_PIN1_PORT, PLATFORM_PIN1_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN2_PORT
         case 2:
-            #ifdef PLATFORM_PIN2_PORT
             GPIO_PinOutClear(PLATFORM_PIN2_PORT, PLATFORM_PIN2_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN3_PORT
         case 3:
-            #ifdef PLATFORM_PIN3_PORT
             GPIO_PinOutClear(PLATFORM_PIN3_PORT, PLATFORM_PIN3_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN4_PORT
         case 4:
-            #ifdef PLATFORM_PIN4_PORT
             GPIO_PinOutClear(PLATFORM_PIN4_PORT, PLATFORM_PIN4_PIN);
-            #endif
         break;
+        #endif
+
+        default:
+            platform_io_error(__LINE__, pin_nr);
     }
 }
 
@@ -179,29 +195,32 @@ void PLATFORM_SetGpioPin (uint8_t pin_nr)
 {
     switch (pin_nr)
     {
+        #ifdef PLATFORM_PIN1_PORT
         case 1:
-            #ifdef PLATFORM_PIN1_PORT
             GPIO_PinOutSet(PLATFORM_PIN1_PORT, PLATFORM_PIN1_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN2_PORT
         case 2:
-            #ifdef PLATFORM_PIN2_PORT
             GPIO_PinOutSet(PLATFORM_PIN2_PORT, PLATFORM_PIN2_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN3_PORT
         case 3:
-            #ifdef PLATFORM_PIN3_PORT
             GPIO_PinOutSet(PLATFORM_PIN3_PORT, PLATFORM_PIN3_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN4_PORT
         case 4:
-            #ifdef PLATFORM_PIN4_PORT
             GPIO_PinOutSet(PLATFORM_PIN4_PORT, PLATFORM_PIN4_PIN);
-            #endif
         break;
+        #endif
+
+        default:
+            err1("bad pin %"PRIu8, pin_nr);
     }
 }
 
@@ -214,29 +233,32 @@ bool PLATFORM_GetGpioPin (uint8_t pin_nr)
 {
     switch (pin_nr)
     {
+        #ifdef PLATFORM_PIN1_PORT
         case 1:
-            #ifdef PLATFORM_PIN1_PORT
             return 0 != GPIO_PinOutGet(PLATFORM_PIN1_PORT, PLATFORM_PIN1_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN2_PORT
         case 2:
-            #ifdef PLATFORM_PIN2_PORT
             return 0 != GPIO_PinOutGet(PLATFORM_PIN2_PORT, PLATFORM_PIN2_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN3_PORT
         case 3:
-            #ifdef PLATFORM_PIN3_PORT
             return 0 != GPIO_PinOutGet(PLATFORM_PIN3_PORT, PLATFORM_PIN3_PIN);
             #endif
         break;
 
+        #ifdef PLATFORM_PIN4_PORT
         case 4:
-            #ifdef PLATFORM_PIN4_PORT
             return 0 != GPIO_PinOutGet(PLATFORM_PIN4_PORT, PLATFORM_PIN4_PIN);
-            #endif
         break;
+        #endif
+
+        default:
+            err1("bad pin %"PRIu8, pin_nr);
     }
     return false;
 }
@@ -249,39 +271,39 @@ void PLATFORM_ToggleGpioPin (uint8_t pin_nr)
 {
     switch (pin_nr)
     {
+        #ifdef PLATFORM_PIN1_PORT
         case 1:
-            #ifdef PLATFORM_PIN1_PORT
             GPIO_PinOutToggle(PLATFORM_PIN1_PORT, PLATFORM_PIN1_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN2_PORT
         case 2:
-            #ifdef PLATFORM_PIN2_PORT
             GPIO_PinOutToggle(PLATFORM_PIN2_PORT, PLATFORM_PIN2_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN3_PORT
         case 3:
-            #ifdef PLATFORM_PIN3_PORT
             GPIO_PinOutToggle(PLATFORM_PIN3_PORT, PLATFORM_PIN3_PIN);
-            #endif
         break;
+        #endif
 
+        #ifdef PLATFORM_PIN4_PORT
         case 4:
-            #ifdef PLATFORM_PIN4_PORT
             GPIO_PinOutToggle(PLATFORM_PIN4_PORT, PLATFORM_PIN4_PIN);
-            #endif
         break;
+        #endif
     }
 }
 
 /******************************************************************************
- * Enable TSB button
+ * Enable platform button
  ******************************************************************************/
 void PLATFORM_ButtonPinInit ()
 {
-    CMU_ClockEnable(cmuClock_GPIO, true);
     #ifdef PLATFORM_BUTTON_PORT
+    CMU_ClockEnable(cmuClock_GPIO, true);
     GPIO_PinModeSet(PLATFORM_BUTTON_PORT, PLATFORM_BUTTON_PIN, gpioModeInputPull, 1);
     #endif
 }
@@ -293,4 +315,20 @@ bool PLATFORM_ButtonGet ()
     #else
     return false;
     #endif
+}
+
+/******************************************************************************
+ * Platform error reporting / handling.
+ *
+ * Currently uses logging system for reporting errors, which means that the
+ * loglevel for platform_io needs to at least define ERR1. Should actually
+ * use asserts or panics or something similar appropriate for the operating
+ * context.
+ *
+ * @param line - line where problem occurred
+ * @param param - generic error parameter
+ ******************************************************************************/
+static void platform_io_error (int line, int param)
+{
+    err1("line %d p:%d"PRIu8, line, param);
 }
