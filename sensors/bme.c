@@ -12,7 +12,11 @@
 #include "bme.h"
 #include "retargeti2c.h"
 
+#ifdef USE_CMSIS_OS2
+#include "cmsis_os2.h"
+#else
 #include "mtimer.h"
+#endif//USE_CMSIS_OS2
 
 #include "loglevels.h"
 #define __MODUUL__ "bme"
@@ -20,7 +24,11 @@
 #include "log.h"
 
 static void delay_ms(uint32_t period){
+	#ifdef USE_CMSIS_OS2
+	osDelay(period);
+	#else
 	mtimer_sleep(period);
+	#endif//USE_CMSIS_OS2
 }
 
 bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){

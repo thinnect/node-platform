@@ -10,7 +10,12 @@
  */
 
 #include "retargeti2c.h"
+
+#ifdef USE_CMSIS_OS2
+#include "cmsis_os2.h"
+#else
 #include "mtimer.h"
+#endif//USE_CMSIS_OS2
 
 #include "loglevels.h"
 #define __MODUUL__ "mma"
@@ -35,7 +40,11 @@ uint8_t mma_activate() {
 	regv = 0x01; // Bit 0 - ACTIVE
 	RETARGET_I2CWrite(0x1D, 0x2A, &regv, 1); // 0x2A CTRL_REG1 System Control 1 register
 
+	#ifdef USE_CMSIS_OS2
+	osDelay(50);
+	#else
 	mtimer_sleep(50);
+	#endif//USE_CMSIS_OS2
 
 	RETARGET_I2CRead(0x1D, 0x0B, &regv, 1); // 0x0B SYSMOD System Mode register
 	debug1("s:%x", regv);
