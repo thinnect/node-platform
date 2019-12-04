@@ -216,7 +216,7 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = -140; // Testsystem power: -16.8dBm
+	RAIL_TxPower_t power = 10; // Low power: 1dBm
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
 
