@@ -11,7 +11,6 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include "rail.h"
-#include "rail_config.h"
 #include "rail_ieee802154.h"
 #include "rail_types.h"
 #include "rail_chip_specific.h"
@@ -159,7 +158,7 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = 170; // Testsystem power: -13dBm
+	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
 	RAIL_GetTxPowerConfig(radio_rail_handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(radio_rail_handle, txPowerConfig.mode, power);
 
@@ -263,7 +262,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 	return(err);
 }
 
-void radio_poll() {
+bool radio_poll() {
 	uint8_t buffer[256];
 	comms_send_done_f *send_done;
 	comms_msg_t msg, *msgp;
@@ -271,6 +270,7 @@ void radio_poll() {
 	RAIL_Status_t rx_status;
 	RAIL_RxPacketInfo_t packetInfo;
 	RAIL_RxPacketDetails_t packetDetails;
+	bool active = false; // Set to true if poll does some actual work
 
 	if(radio_restart == true) {
 		warn1("restart");
@@ -282,6 +282,7 @@ void radio_poll() {
 		if(radio_sending) { // If sending, cancel and notify user
 			radio_send_fail = true;
 		}
+		active = true;
 	}
 
 	if (rx_fail == 1) {
@@ -296,6 +297,7 @@ void radio_poll() {
 		radio_sending = false;
 		debug1("EBUSY");
 		if(send_done != NULL)send_done((comms_layer_t *)&radio_iface, msgp, COMMS_EBUSY, user);
+		active = true;
 	}
 	if(radio_send_fail) {
 		radio_send_fail = 0;
@@ -305,6 +307,7 @@ void radio_poll() {
 		radio_sending = false;
 		debug1("FAIL");
 		if(send_done != NULL)send_done((comms_layer_t *)&radio_iface, msgp, COMMS_FAIL, user);
+		active = true;
 	}
 	if(radio_send_done_flag) {
 		radio_send_done_flag = 0;
@@ -320,6 +323,7 @@ void radio_poll() {
 		} else {
 			debug1("sD fail");
 		}
+		active = true;
 	}
 	if(radio_rx_packet_handle != RAIL_RX_PACKET_HANDLE_INVALID) {
 		uint32_t timestamp = 0;
@@ -392,11 +396,13 @@ void radio_poll() {
 
 				debug1("rx %02"PRIX8" %"PRIu8, amid, plen);
 				comms_deliver((comms_layer_t *)&radio_iface, &msg);
+				active = true; // We just delivered a message
 			}
 			else err1("rx bad pl %02"PRIX8" %"PRIu8, amid, plen);
 		}
 		else debug1("rx bad");
 	}
+	return active;
 }
 
 static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events) {

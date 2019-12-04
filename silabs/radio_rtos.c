@@ -5,22 +5,27 @@
  * @license MIT
  * @author Veiko Rütter, Konstantin Bilozor, Raido Pahtma
  */
-
 #include "radio.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include "rail.h"
-#include "rail_config.h"
 #include "rail_ieee802154.h"
 #include "rail_types.h"
 #include "rail_chip_specific.h"
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
+#include "sleep.h"
+
+#ifdef RAIL_USE_CUSTOM_CONFIG
+// rail_config can be generated with SimplicityStudio, but it is not commonly
+// necessary as an 802.15.4 standard conf is present in RAIL by default
+#include "rail_config.h"
+#endif//RAIL_USE_CUSTOM_CONFIG
 
 #include "cmsis_os2.h"
-// Because including FreeRTOS conflicts with SiLabs
+// Because including FreeRTOS conflicts with SiLabs RAIL
 extern void vPortEnterCritical();
 extern void vPortExitCritical();
 
@@ -48,6 +53,12 @@ static RAIL_Status_t rx_fifo_status;
 static uint8_t radio_tx_num;
 static bool radio_tx_wait_ack;
 
+
+
+static volatile bool sleeping;
+static volatile bool sleep_ready;
+static volatile bool stop_radio;
+static volatile bool start_radio;
 static volatile bool radio_send_done_flag;
 static volatile bool radio_send_busy;
 static volatile bool radio_send_fail;
@@ -69,13 +80,18 @@ static uint8_t radio_send_retries;
 static void radio_thread(void *p);
 
 static RAIL_Handle_t radio_rail_init(); // Internal RAIL initialization procedures
-static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events);
-static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry);
-static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle);
-static uint32_t radio_timestamp();
-static void radio_send_timeout_callback(void* argument);
-static void radio_resend_timeout_callback(void* argument);
 
+// The main RAIL callback function
+static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events);
+
+static uint32_t radio_timestamp();
+static void radio_send_timeout_cb(void* argument);
+static void radio_resend_timeout_cb(void* argument);
+
+static comms_status_change_f* stop_done_f;
+static comms_status_change_f* start_done_f;
+static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change_f* start_done, void* user);
+static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_f* stop_done, void* user);
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user);
 
 static radio_queue_element_t radio_msg_queue_memory[7];
@@ -84,6 +100,18 @@ static volatile radio_queue_element_t* radio_msg_queue_head;
 static volatile radio_queue_element_t* radio_msg_sending;
 
 osMessageQueueId_t rxQueue;
+osThreadId_t rtid;
+
+static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle) {
+}
+
+#ifdef RAIL_USE_CUSTOM_CONFIG
+// Only define the config-changed callback if we actually give it to RAIL with a custom config
+static void radio_rail_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
+}
+#endif//RAIL_USE_CUSTOM_CONFIG
+
+
 
 comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_channel = channel;
@@ -92,6 +120,10 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_tx_num = 0;
 	newSrcPos = 0;
 
+	sleeping = false;
+	start_radio = false;
+	sleep_ready = false;
+	stop_radio = false;
 	radio_msg_sending = NULL;
 	radio_msg_queue_head = NULL;
 	radio_msg_queue_free = &radio_msg_queue_memory[0];
@@ -107,20 +139,15 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 		return(NULL);
 	}
 
-	radio_rail_handle = radio_rail_init();
-	if(radio_rail_handle != NULL) {
-		radio_mutex = osMutexNew(NULL);
-		radio_send_timeout_timer = osTimerNew(&radio_send_timeout_callback, osTimerOnce, NULL, NULL);
-		radio_resend_timer = osTimerNew(&radio_resend_timeout_callback, osTimerOnce, NULL, NULL);
-		const osThreadAttr_t radio_thread_attr = {
-			.name = "radio"
-		};
-		osThreadNew(radio_thread, NULL, &radio_thread_attr);
-		comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send);
-		return (comms_layer_t *)&radio_iface;
-	}
-	err1("rail_init");
-	return(NULL);
+	radio_mutex = osMutexNew(NULL);
+	radio_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
+	radio_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
+	const osThreadAttr_t radio_thread_attr = {
+		.name = "radio"
+	};
+	osThreadNew(radio_thread, NULL, &radio_thread_attr);
+	comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send, radio_start, radio_stop);
+	return (comms_layer_t *)&radio_iface;
 }
 
 RAIL_Handle_t radio_rail_init() {
@@ -176,7 +203,8 @@ RAIL_Handle_t radio_rail_init() {
 	rx_fail = 0;
 	rx_fifo_status = RAIL_STATUS_NO_ERROR-1;
 
-	int32_t priority = 3; // not shifted, but once shifted = 01100000
+	int32_t priority = 3; // not shifted, but once shifted = 01100000 ??????
+
 	NVIC_SetPriority(FRC_PRI_IRQn, priority);
 	NVIC_SetPriority(FRC_IRQn, priority);
 	NVIC_SetPriority(MODEM_IRQn, priority);
@@ -186,7 +214,7 @@ RAIL_Handle_t radio_rail_init() {
 	NVIC_SetPriority(AGC_IRQn, priority);
 	NVIC_SetPriority(PROTIMER_IRQn, priority);
 	NVIC_SetPriority(SYNTH_IRQn, priority);
-	//NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
+	NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
 
 	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
 	if(handle == NULL) {
@@ -216,7 +244,7 @@ RAIL_Handle_t radio_rail_init() {
 		return(NULL);
 	}
 
-	RAIL_TxPower_t power = 10; // Low power: 1dBm
+	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
 
@@ -225,9 +253,10 @@ RAIL_Handle_t radio_rail_init() {
 	// Initialize Radio Calibrations
 	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
-	// Load the channel configuration for the generated radio settings
-	//RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
-	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
+	// Load custom channel configuration for the generated radio settings
+	#ifdef RAIL_USE_CUSTOM_CONFIG
+		RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_config_changed_cb);
+	#endif//RAIL_USE_CUSTOM_CONFIG
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
 	                     | RAIL_EVENT_RX_ACK_TIMEOUT
@@ -273,6 +302,7 @@ RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle) {
 	return status;
 }
 
+
 void radio_idle() {
 	RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 }
@@ -285,7 +315,7 @@ static uint32_t radio_timestamp() {
 	return osKernelGetTickCount();
 }
 
-static void radio_send_timeout_callback(void* argument) {
+static void radio_send_timeout_cb(void* argument) {
 	while(osMutexAcquire(radio_mutex, 1000) != osOK);
 	if(radio_msg_sending != NULL) {
 		radio_send_timeout = true;
@@ -293,8 +323,57 @@ static void radio_send_timeout_callback(void* argument) {
 	osMutexRelease(radio_mutex);
 }
 
+static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change_f* start_done, void* user) {
+	osThreadState_t st;
+	osStatus_t oss;
+	RAIL_Status_t s;
+
+	if(iface != (comms_layer_iface_t *)&radio_iface) {
+		return(COMMS_EINVAL);
+	}
+
+	st = osThreadGetState(rtid);
+	if (st != osThreadRunning) {
+		osMutexAcquire(radio_mutex, 1000);
+		oss = osThreadResume(rtid);
+		if (oss != osOK) {
+			err1("oss: %"PRIi32"", oss);
+		}
+		debug1("radio start!");
+		start_done_f = start_done;
+		RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
+		s = RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
+		if (s != RAIL_STATUS_NO_ERROR) {
+			err1("rail err: %"PRIu8"", s);
+		}
+		start_radio = true;
+		osMutexRelease(radio_mutex);
+		return COMMS_SUCCESS;
+	} else {
+		return COMMS_FAIL;
+	}
+}
+
+static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_f* stop_done, void* user) {
+	if(iface != (comms_layer_iface_t *)&radio_iface) {
+		return(COMMS_EINVAL);
+	}
+	stop_done_f = stop_done;
+
+	stop_radio = true;
+
+	return COMMS_SUCCESS;
+}
+
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user) {
 	comms_error_t err = COMMS_FAIL;
+
+	if (sleeping == true) {
+		err1("radio off");
+		return COMMS_EOFF;
+	}
+
+	sleep_ready = false;
 
 	if(iface != (comms_layer_iface_t *)&radio_iface) {
 		return(COMMS_EINVAL);
@@ -418,20 +497,20 @@ static void radio_send_message(comms_msg_t* msg) {
 	osMutexRelease(radio_mutex);
 }
 
-static void radio_resend_timeout_callback(void* argument) {
+static void radio_resend_timeout_cb(void* argument) {
+
 	uint8_t retu = comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) + 1;
 	comms_set_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg, retu);
 	radio_send_message(radio_msg_sending->msg);
-	vPortEnterCritical();
-	rx_ack_timeout = false;
-	vPortExitCritical();
 }
 
 static void radio_send_next() {
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
 	radio_msg_sending = radio_msg_queue_head;
 	radio_msg_queue_head = radio_msg_queue_head->next;
 	radio_send_retries = 0;
 	++radio_tx_num;
+	osMutexRelease(radio_mutex);
 	radio_send_message(radio_msg_sending->msg);
 }
 
@@ -466,11 +545,12 @@ static void signal_send_done(comms_error_t err) {
 		}
 		logger(err==COMMS_SUCCESS?LOG_INFO1:LOG_WARN1, "snt %p e:%d t:%"PRIu32, msgp, err, radio_sent_time-radio_send_time);
 		send_done((comms_layer_t *)&radio_iface, msgp, err, user);
+		sleep_ready = true;
 	}
 	else err1("snt ? e:%d", err);
 }
 
-void radio_poll() {
+void radio_run() {
 	// If an exception has occurred and RAIL is broken -------------------------
 	if(radio_restart == true) {
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
@@ -579,6 +659,10 @@ void radio_poll() {
 		}
 		osMutexRelease(radio_mutex);
 
+		vPortEnterCritical();
+		rx_ack_timeout = false;
+		vPortExitCritical();
+
 		logger(resend?LOG_DEBUG1:LOG_WARN1, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
 		       comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg),
 		       comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
@@ -586,9 +670,6 @@ void radio_poll() {
 			radio_send_retries = 0;
 			osTimerStart(radio_resend_timer, comms_get_timeout((comms_layer_t *)&radio_iface, radio_msg_sending->msg));
 		} else {
-			vPortEnterCritical();
-			rx_ack_timeout = false;
-			vPortExitCritical();
 			signal_send_done(COMMS_ENOACK);
 		}
 	}
@@ -731,24 +812,79 @@ void radio_poll() {
 }
 
 static void radio_thread(void *p) {
+	comms_send_done_f *send_done = NULL;
+	osStatus_t oss;
+
+	rtid = osThreadGetId();
+	radio_rail_handle = radio_rail_init();
+	if (radio_rail_handle == NULL) {
+		err1("radio init");
+		while(1) ; // Did this ever happened?
+	}
 	while(true) {
-		radio_poll();
+		GPIO_PinOutSet(gpioPortA, 1);
+
+		if (stop_radio) {
+			uint8_t i = 0;
+			RAIL_RxPacketHandle_t rxh;
+
+			SLEEP_SleepBlockEnd(sleepEM1);
+			if ((sleep_ready) && (radio_msg_sending == NULL)) {
+				radio_tx_wait_ack = false;
+				debug1("RADIO STOP");
+				RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
+				stop_radio = false;
+				sleep_ready = false;
+				sleeping = true;
+			    if (radio_msg_queue_head != NULL) {
+
+			    	send_done = radio_msg_queue_head->send_done;
+			    	debug1("rmqh");
+			    	send_done((comms_layer_t *)&radio_iface, radio_msg_queue_head->msg,
+			    				COMMS_EOFF, radio_msg_queue_head->user);
+			    	//radio_msg_queue_free = radio_msg_queue_head;
+			    }
+				while (osOK == osMessageQueueGet(rxQueue, &rxh, NULL, 0)) {
+					warn1("msgCnt: %"PRIu8"", ++i);
+					RAIL_Status_t rst = RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
+					if(rst != RAIL_STATUS_NO_ERROR) {
+						warnb1("rst", &rst, sizeof(RAIL_Status_t));
+						while(1);
+					}
+				}
+				stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
+				oss = osThreadSuspend(rtid);
+				if (oss != osOK) {
+					err1("oss: %"PRIi32"", oss);
+				}
+			}
+		}
+		if (start_radio) {
+			sleeping = false;
+			start_radio = false;
+			sleep_ready = true;
+			SLEEP_SleepBlockBegin(sleepEM1);
+			start_done_f((comms_layer_t *)&radio_iface, COMMS_STARTED, NULL);
+		}
+		radio_run();
 	}
 }
 
+bool radio_poll() {
+	bool busy;
 
-void ackWaitTimer(RAIL_Handle_t cbArg)
-{
-	if (rx_ack_timeout == 0) {
-		comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
-		radio_send_done_flag = true;
-	}
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
+	busy = (radio_msg_sending != NULL)||(radio_msg_queue_head != NULL);
+	osMutexRelease(radio_mutex);
+
+	return busy;
 }
 
 
 static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t events) {
 
 	if(events & RAIL_EVENTS_TX_COMPLETION) {
+
 		if(events & RAIL_EVENT_TX_PACKET_SENT) {
 			radio_sent_time = RAIL_GetTime();
 			if(radio_tx_wait_ack) {
@@ -765,7 +901,7 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 		}
 	}
 
-	if(events & RAIL_EVENTS_RX_COMPLETION) {
+	if((events & RAIL_EVENTS_RX_COMPLETION) && (stop_radio == false)) {
 		bool unhandled = true;
 		if(events & RAIL_EVENT_RX_PACKET_RECEIVED) {
 			RAIL_RxPacketHandle_t rxh = RAIL_HoldRxPacket(radio_rail_handle);
@@ -775,13 +911,14 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 					if(pi.packetBytes == 4) { // Inspect if it is an ack
 						uint8_t buffer[4];
 						RAIL_CopyRxPacket(buffer, &pi);
-						if((buffer[0] == 0x05) && (buffer[1] == 0x02)) {
-							if(radio_tx_wait_ack) { // Could also check the actual seq, but we assume RAIL does that
+						if((buffer[0] == 0x05) && (buffer[1] == 0x02) && (buffer[3] == radio_tx_num)) {
+							if(radio_tx_wait_ack) {
 								radio_send_done_flag = true;
 							}
 							RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
 							rxh = RAIL_RX_PACKET_HANDLE_INVALID;
 						}
+
 					}
 				}
 
@@ -824,7 +961,9 @@ static void radio_rail_event_cb(RAIL_Handle_t radio_rail_handle, RAIL_Events_t e
 	}
 
 	if(events & RAIL_EVENT_RX_ACK_TIMEOUT) {
-		rx_ack_timeout = true;
+		if (radio_tx_wait_ack) {
+			rx_ack_timeout = true;
+		}
 	}
 
 	if(events & RAIL_EVENT_CAL_NEEDED) {
@@ -844,10 +983,4 @@ void RAILCb_AssertFailed(RAIL_Handle_t railHandle, RAIL_AssertErrorCodes_t error
 		global_rail_error_code = errorCode;
 		while(1);
 	}
-}
-
-static void radio_rail_radio_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
-}
-
-static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle) {
 }
