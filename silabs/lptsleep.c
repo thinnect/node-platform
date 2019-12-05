@@ -311,7 +311,7 @@ void vPortSuppressTicksAndSleep (TickType_t xExpectedIdleTime)
         // we cannot generate the actual tick interrupt, so -1.
         uint32_t ulCountAfterSleep;
         uint32_t ulCountBeforeSleep = RTCC_CounterGet();
-        uint32_t ulSleepValue = (ulSleepTIMER_FREQUENCY_HZ * (xExpectedIdleTime - 2)) / configTICK_RATE_HZ;
+        uint32_t ulSleepValue = (ulSleepTIMER_FREQUENCY_HZ * (xExpectedIdleTime - 1)) / configTICK_RATE_HZ;
         uint32_t ulSleepCount;
 
         RTCC_ChannelCCVSet(configLPTSLEEP_RTCC_CHANNEL, ulCountBeforeSleep+ulSleepValue);
