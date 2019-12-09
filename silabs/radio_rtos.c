@@ -245,6 +245,7 @@ RAIL_Handle_t radio_rail_init() {
 	}
 
 	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
+	debug1("RF power:%d cBm", power);
 	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
 	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
 
