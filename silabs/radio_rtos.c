@@ -864,9 +864,9 @@ static void radio_thread(void *p) {
 						while(1);
 					}
 				}
+				m_stop_timestamp = radio_timestamp();
 				stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
 				oss = osThreadSuspend(rtid);
-				m_stop_timestamp = radio_timestamp();
 				if (oss != osOK) {
 					err1("oss: %"PRIi32"", oss);
 				}
