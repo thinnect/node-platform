@@ -28,6 +28,12 @@ void radio_reenable();
 void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id);
 
 /**
+ * Radio statistics - count time radio is initialized, but sleeping.
+ * @return sleep time in milliseconds.
+ */
+uint32_t radio_sleep_time();
+
+/**
  * Poll the radio.
  * @return true if it is doing something.
  */

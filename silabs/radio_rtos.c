@@ -77,6 +77,9 @@ static uint32_t radio_send_time;
 static uint32_t radio_sent_time;
 static uint8_t radio_send_retries;
 
+static uint32_t m_sleep_time;
+static uint32_t m_stop_timestamp;
+
 static void radio_thread(void *p);
 
 static RAIL_Handle_t radio_rail_init(); // Internal RAIL initialization procedures
@@ -95,9 +98,9 @@ static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user);
 
 static radio_queue_element_t radio_msg_queue_memory[7];
-static volatile radio_queue_element_t* radio_msg_queue_free;
-static volatile radio_queue_element_t* radio_msg_queue_head;
-static volatile radio_queue_element_t* radio_msg_sending;
+static radio_queue_element_t* radio_msg_queue_free;
+static radio_queue_element_t* radio_msg_queue_head;
+static radio_queue_element_t* radio_msg_sending;
 
 osMessageQueueId_t rxQueue;
 osThreadId_t rtid;
@@ -119,6 +122,9 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_address = address;
 	radio_tx_num = 0;
 	newSrcPos = 0;
+
+	m_sleep_time = 0;
+	m_stop_timestamp = 0;
 
 	sleeping = false;
 	start_radio = false;
@@ -302,6 +308,10 @@ RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle) {
 	return status;
 }
 
+uint32_t radio_sleep_time()
+{
+	return m_sleep_time;
+}
 
 void radio_idle() {
 	RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
@@ -340,6 +350,7 @@ static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change
 			err1("oss: %"PRIi32"", oss);
 		}
 		debug1("radio start!");
+		m_sleep_time += radio_timestamp() - m_stop_timestamp;
 		start_done_f = start_done;
 		RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 		s = RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
@@ -812,7 +823,6 @@ void radio_run() {
 }
 
 static void radio_thread(void *p) {
-	comms_send_done_f *send_done = NULL;
 	osStatus_t oss;
 
 	rtid = osThreadGetId();
@@ -825,7 +835,6 @@ static void radio_thread(void *p) {
 		GPIO_PinOutSet(gpioPortA, 1);
 
 		if (stop_radio) {
-			uint8_t i = 0;
 			RAIL_RxPacketHandle_t rxh;
 
 			SLEEP_SleepBlockEnd(sleepEM1);
@@ -836,16 +845,19 @@ static void radio_thread(void *p) {
 				stop_radio = false;
 				sleep_ready = false;
 				sleeping = true;
-			    if (radio_msg_queue_head != NULL) {
 
-			    	send_done = radio_msg_queue_head->send_done;
-			    	debug1("rmqh");
-			    	send_done((comms_layer_t *)&radio_iface, radio_msg_queue_head->msg,
-			    				COMMS_EOFF, radio_msg_queue_head->user);
-			    	//radio_msg_queue_free = radio_msg_queue_head;
-			    }
+				// Return any pending TX messages with COMMS_EOFF
+				while (NULL != radio_msg_queue_head) {
+					radio_queue_element_t* qe = radio_msg_queue_head;
+					warn1("rmqh %p", qe->msq);
+					qe->send_done((comms_layer_t *)&radio_iface, qe->msg, COMMS_EOFF, qe->user);
+
+					radio_msg_queue_head = qe->next;
+					qe->next = radio_msg_queue_free;
+					radio_msg_queue_free = qe;
+				}
 				while (osOK == osMessageQueueGet(rxQueue, &rxh, NULL, 0)) {
-					warn1("msgCnt: %"PRIu8"", ++i);
+					warn1("rxmsg");
 					RAIL_Status_t rst = RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
 					if(rst != RAIL_STATUS_NO_ERROR) {
 						warnb1("rst", &rst, sizeof(RAIL_Status_t));
@@ -854,6 +866,7 @@ static void radio_thread(void *p) {
 				}
 				stop_done_f((comms_layer_t *)&radio_iface, COMMS_STOPPED, NULL);
 				oss = osThreadSuspend(rtid);
+				m_stop_timestamp = radio_timestamp();
 				if (oss != osOK) {
 					err1("oss: %"PRIi32"", oss);
 				}
