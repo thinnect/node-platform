@@ -843,7 +843,7 @@ static void radio_thread(void *p) {
 		if (stop_radio) {
 			RAIL_RxPacketHandle_t rxh;
 
-			SLEEP_SleepBlockEnd(sleepEM1);
+			SLEEP_SleepBlockEnd(sleepEM2);
 			if ((sleep_ready) && (radio_msg_sending == NULL)) {
 				radio_tx_wait_ack = false;
 				info2("stop");
@@ -882,7 +882,7 @@ static void radio_thread(void *p) {
 			sleeping = false;
 			start_radio = false;
 			sleep_ready = true;
-			SLEEP_SleepBlockBegin(sleepEM1);
+			SLEEP_SleepBlockBegin(sleepEM2);
 			start_done_f((comms_layer_t *)&radio_iface, COMMS_STARTED, NULL);
 		}
 		radio_run();
