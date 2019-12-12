@@ -24,6 +24,10 @@
 #include "rail_config.h"
 #endif//RAIL_USE_CUSTOM_CONFIG
 
+#ifndef RADIO_INTERRUPT_PRIORITY
+#error "RADIO_INTERRUPT_PRIORITY not defined - must be numerically >= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY"
+#endif//RADIO_INTERRUPT_PRIORITY
+
 #include "cmsis_os2.h"
 // Because including FreeRTOS conflicts with SiLabs RAIL
 extern void vPortEnterCritical();
@@ -153,6 +157,9 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	};
 	osThreadNew(radio_thread, NULL, &radio_thread_attr);
 	comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send, radio_start, radio_stop);
+
+	info1("channel %d pan %02X rfpower %d", (int)channel, (int)pan_id, (int)DEFAULT_RFPOWER_DBM);
+
 	return (comms_layer_t *)&radio_iface;
 }
 
@@ -209,8 +216,7 @@ RAIL_Handle_t radio_rail_init() {
 	rx_fail = 0;
 	rx_fifo_status = RAIL_STATUS_NO_ERROR-1;
 
-	int32_t priority = 3; // not shifted, but once shifted = 01100000 ??????
-
+	int32_t priority = RADIO_INTERRUPT_PRIORITY; // not shifted
 	NVIC_SetPriority(FRC_PRI_IRQn, priority);
 	NVIC_SetPriority(FRC_IRQn, priority);
 	NVIC_SetPriority(MODEM_IRQn, priority);
@@ -351,7 +357,7 @@ static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change
 		if (oss != osOK) {
 			err1("oss: %"PRIi32"", oss);
 		}
-		debug1("radio start!");
+		info2("start");
 		m_sleep_time += radio_timestamp() - m_stop_timestamp;
 		start_done_f = start_done;
 		RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
@@ -412,7 +418,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 			}
 			qn->next = qm;
 		}
-		info1("snd %p", msg);
+		info3("snd %p", msg);
 		err = COMMS_SUCCESS;
 	} else {
 		warn1("busy");
@@ -556,7 +562,7 @@ static void signal_send_done(comms_error_t err) {
 			comms_set_timestamp((comms_layer_t *)&radio_iface, msgp, radio_timestamp());
 			_comms_set_ack_received((comms_layer_t *)&radio_iface, msgp);
 		}
-		logger(err==COMMS_SUCCESS?LOG_INFO1:LOG_WARN1, "snt %p e:%d t:%"PRIu32, msgp, err, radio_sent_time-radio_send_time);
+		logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN1, "snt %p e:%d t:%"PRIu32, msgp, err, radio_sent_time-radio_send_time);
 		send_done((comms_layer_t *)&radio_iface, msgp, err, user);
 		sleep_ready = true;
 	}
@@ -694,7 +700,7 @@ void radio_run() {
 		tas = tx_ack_sent;
 		tx_ack_sent = 0;
 		vPortExitCritical();
-		info1("tx_ack_sent:%"PRIu8, tas);
+		info4("tx_ack_sent:%"PRIu8, tas);
 	}
 
 	// RX processing -----------------------------------------------------------
@@ -834,15 +840,13 @@ static void radio_thread(void *p) {
 		while(1) ; // Did this ever happened?
 	}
 	while(true) {
-		GPIO_PinOutSet(gpioPortA, 1);
-
 		if (stop_radio) {
 			RAIL_RxPacketHandle_t rxh;
 
 			SLEEP_SleepBlockEnd(sleepEM1);
 			if ((sleep_ready) && (radio_msg_sending == NULL)) {
 				radio_tx_wait_ack = false;
-				debug1("RADIO STOP");
+				info2("stop");
 				RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 				stop_radio = false;
 				sleep_ready = false;
@@ -851,7 +855,7 @@ static void radio_thread(void *p) {
 				// Return any pending TX messages with COMMS_EOFF
 				while (NULL != radio_msg_queue_head) {
 					radio_queue_element_t* qe = radio_msg_queue_head;
-					warn1("rmqh %p", qe->msq);
+					warn1("rmqh %p", qe->msg);
 					qe->send_done((comms_layer_t *)&radio_iface, qe->msg, COMMS_EOFF, qe->user);
 
 					radio_msg_queue_head = qe->next;
