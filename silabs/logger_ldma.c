@@ -43,15 +43,15 @@ static osMutexId_t log_mutex;
 #ifdef LOGGER_LDMA_LEUART0
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_LEUART0_TXBL);
 #endif//LOGGER_LDMA_LEUART0
-#ifdef LOGGER_LDMA_UART0
+#ifdef LOGGER_LDMA_USART0
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_USART0_TXBL);
-#endif//LOGGER_LDMA_UART0
-#ifdef LOGGER_LDMA_UART1
+#endif//LOGGER_LDMA_USART0
+#ifdef LOGGER_LDMA_USART1
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_USART1_TXBL);
-#endif//LOGGER_LDMA_UART1
-#ifdef LOGGER_LDMA_UART2
+#endif//LOGGER_LDMA_USART1
+#ifdef LOGGER_LDMA_USART2
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_USART2_TXBL);
-#endif//LOGGER_LDMA_UART2
+#endif//LOGGER_LDMA_USART2
 
 
 static void ldmaStart(void) {
@@ -78,15 +78,15 @@ static void ldmaStart(void) {
 		#ifdef LOGGER_LDMA_LEUART0
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &LEUART0->TXDATA, length);
 		#endif//LOGGER_LDMA_LEUART0
-		#ifdef LOGGER_LDMA_UART0
+		#ifdef LOGGER_LDMA_USART0
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &USART0->TXDATA, length);
-		#endif//LOGGER_LDMA_UART0
-		#ifdef LOGGER_LDMA_UART1
+		#endif//LOGGER_LDMA_USART0
+		#ifdef LOGGER_LDMA_USART1
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &USART1->TXDATA, length);
-		#endif//LOGGER_LDMA_UART1
-		#ifdef LOGGER_LDMA_UART2
+		#endif//LOGGER_LDMA_USART1
+		#ifdef LOGGER_LDMA_USART2
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&buf[bufStart], &USART2->TXDATA, length);
-		#endif//LOGGER_LDMA_UART2
+		#endif//LOGGER_LDMA_USART2
 
 		//LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_LINKREL_M2P_BYTE(&buf[bufStart], &USART1->TXDATA, bufPos-bufStart,1);
 
@@ -108,7 +108,6 @@ void LDMA_IRQHandler(void) {
 
 	uint32_t mask = 0x1;
 	if (pending & mask) {
-		//LDMA->IFC = mask;
 		ldmaDone = true;
 	}
 }
