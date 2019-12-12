@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <math.h>
 
 #include "retargeti2c.h"
 #include "ltc.h"
@@ -89,4 +90,32 @@ int16_t ltc4015_charge_current_read(void)
 	// https://www.analog.com/media/en/technical-documentation/data-sheets/4015fb.pdf p.69
   	ibat = (((int8_t)regv[1] << 8) | regv[0]) * LTC_IBAT_LSB_RESO_nV / LTC_RSNSB_mOHM / 1000;
   	return ibat;
+}
+
+
+
+float ltc4015_bat_temp_read(void)
+{
+	uint8_t regv[2];
+	uint16_t R_ntc;
+	float steinhart;
+
+	RETARGET_I2CRead(LTC_DEVICE_ADDR, LTC_NTC_RATIO_REG, regv, 2);
+	R_ntc = (regv[1] << 8) | regv[0];
+
+	// https://www.analog.com/media/en/technical-documentation/data-sheets/4015fb.pdf p.21
+	R_ntc = (LTC_RNTC_BIAS_OHM * R_ntc) / (LTC_RTC_CALC_CONST - R_ntc);
+
+	steinhart = R_ntc / 1000; // Convert Ohm to kOhm
+    // Thermistor Example #3 from the Adafruit Learning System guide on Thermistors
+    // https://learn.adafruit.com/thermistor/overview by Limor Fried, Adafruit Industries
+    // MIT License - please keep attribution and consider buying parts from Adafruit
+    steinhart = steinhart / RESISTANCE_THERM_NOMINAL_KOHM;   // (R/Ro)
+    steinhart = log(steinhart);                  // ln(R/Ro)
+    steinhart /= BETA_COEFFICIENT;                   // 1/B * ln(R/Ro)
+    steinhart += 1.0 / (TEMPERATURE_THERM_NOMINAL + 273.15); // + (1/To)
+    steinhart = 1.0 / steinhart;                 // Invert
+    steinhart -= 273.15;                         // convert to C
+
+	return steinhart;
 }
