@@ -121,6 +121,7 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 	uint8_t* payload = comms_get_payload(lyr, &msg, m->payload_length);
 	if (NULL == payload)
 	{
+		osMutexRelease(sam->mutex);
 		err1("pl %d", m->payload_length);
 		return false;
 	}
