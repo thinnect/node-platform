@@ -21,7 +21,14 @@
 
 #include "em_device.h"
 #include "em_ldma.h"
+#include "em_gpio.h"
+#include "em_cmu.h"
+#include "em_usart.h"
+
 #include "sleep.h"
+
+#include "retargetserial.h"
+#include "retargetserialconfig.h"
 
 #include "cmsis_os2.h"
 
@@ -80,6 +87,18 @@ static void unsafe_try_ldma_start (void)
 
 	if (length > 0)
 	{
+		if (m_ldma_idle)
+		{
+			m_ldma_idle = false;
+
+			// USART works in EM0 and EM1
+			SLEEP_SleepBlockBegin(sleepEM2);
+
+			// Enable debug serial
+			RETARGET_SerialInit();
+		}
+
+		// Configure LDMA transfer
 		#ifdef LOGGER_LDMA_LEUART0
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&m_ldma_buf[m_buf_start], &LEUART0->TXDATA, length);
 		#endif//LOGGER_LDMA_LEUART0
@@ -92,19 +111,28 @@ static void unsafe_try_ldma_start (void)
 		#ifdef LOGGER_LDMA_USART2
 		LDMA_Descriptor_t xfer = LDMA_DESCRIPTOR_SINGLE_M2P_BYTE(&m_ldma_buf[m_buf_start], &USART2->TXDATA, length);
 		#endif//LOGGER_LDMA_USART2
-
 		xfer.xfer.dstInc  = ldmaCtrlDstIncNone;
 		xfer.xfer.doneIfs = 0;
-
 		LDMA_StartTransfer(0, (void*)&periTransferTx, (void*)&xfer);
-
-		m_ldma_idle = false;
-		SLEEP_SleepBlockBegin(sleepEM2); // LDMA works in EM0 and EM1
 	}
 	else
 	{
-		m_ldma_idle = true;
-		SLEEP_SleepBlockEnd(sleepEM2);
+		while (!(RETARGET_UART->STATUS & USART_STATUS_TXC))
+		{
+			osDelay(1); // Wait for transfer to complete
+		}
+
+		if (false == m_ldma_idle)
+		{
+			m_ldma_idle = true;
+			SLEEP_SleepBlockEnd(sleepEM2);
+
+			// Disable debug serial
+			USART_Enable(RETARGET_UART, usartDisable);
+			CMU_ClockEnable(RETARGET_CLK, false);
+			GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModeDisabled, 0);
+			GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeDisabled, 0);
+		}
 	}
 }
 
