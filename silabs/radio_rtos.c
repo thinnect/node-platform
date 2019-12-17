@@ -155,8 +155,10 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	const osThreadAttr_t radio_thread_attr = {
 		.name = "radio"
 	};
-	osThreadNew(radio_thread, NULL, &radio_thread_attr);
+
 	comms_am_create((comms_layer_t *)&radio_iface, radio_address, radio_send, radio_start, radio_stop);
+
+	osThreadNew(radio_thread, NULL, &radio_thread_attr);
 
 	info1("channel %d pan %02X rfpower %d", (int)channel, (int)pan_id, (int)DEFAULT_RFPOWER_DBM);
 

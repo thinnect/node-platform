@@ -181,9 +181,9 @@ static void ldma_thread (void* argument)
 int logger_ldma_init ()
 {
 	const osThreadAttr_t ldma_thread_attr = { .name = "ldma" };
-	m_ldma_thread = osThreadNew(ldma_thread, NULL, &ldma_thread_attr);
-	m_log_mutex = osMutexNew(NULL);
 	m_ldma_idle = true;
+	m_log_mutex = osMutexNew(NULL);
+	m_ldma_thread = osThreadNew(ldma_thread, NULL, &ldma_thread_attr);
 
 	LDMA_Init_t initLdma = LDMA_INIT_DEFAULT;
 	initLdma.ldmaInitIrqPriority = LDMA_INTERRUPT_PRIORITY;
