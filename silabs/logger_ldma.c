@@ -91,11 +91,12 @@ static void unsafe_try_ldma_start (void)
 		{
 			m_ldma_idle = false;
 
-			// USART works in EM0 and EM1
+		 	// USART works in EM0 and EM1
 			SLEEP_SleepBlockBegin(sleepEM2);
 
-			// Enable debug serial
+			// Enable debug serial and wait for 1ms
 			RETARGET_SerialInit();
+			osDelay(1);
 		}
 
 		// Configure LDMA transfer
