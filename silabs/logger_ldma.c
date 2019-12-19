@@ -114,7 +114,7 @@ static void unsafe_try_ldma_start (void)
 		#endif//LOGGER_LDMA_USART2
 		xfer.xfer.dstInc  = ldmaCtrlDstIncNone;
 		xfer.xfer.doneIfs = 0;
-		LDMA_StartTransfer(0, (void*)&periTransferTx, (void*)&xfer);
+		LDMA_StartTransfer(LOGGER_LDMA_CHANNEL, (void*)&periTransferTx, (void*)&xfer);
 	}
 	else
 	{
