@@ -130,7 +130,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	m_sleep_time = 0;
 	m_stop_timestamp = 0;
 
-	sleeping = false;
+	sleeping = true;
 	start_radio = false;
 	sleep_ready = false;
 	stop_radio = false;
@@ -344,33 +344,52 @@ static void radio_send_timeout_cb(void* argument) {
 }
 
 static comms_error_t radio_start(comms_layer_iface_t* iface, comms_status_change_f* start_done, void* user) {
-	osThreadState_t st;
-	osStatus_t oss;
-	RAIL_Status_t s;
 
 	if(iface != (comms_layer_iface_t *)&radio_iface) {
 		return(COMMS_EINVAL);
 	}
 
-	st = osThreadGetState(rtid);
-	if (st != osThreadRunning) {
-		osMutexAcquire(radio_mutex, 1000);
-		oss = osThreadResume(rtid);
+	// FIXME: refactor the whole thing and clean up RAIL access ----------------
+	for(;;) {
+		while(osMutexAcquire(radio_mutex, 1000) != osOK);
+		// It is currently vital that the radio thread start up before start is attempted
+		if(rtid == NULL) // rtid is set in the thread, don't set it from
+		{                // thread creation before fixing other issues
+			osMutexRelease(radio_mutex);
+			osDelay(1);
+		}
+		else
+		{
+			osMutexRelease(radio_mutex);
+			break;
+		}
+	}
+	// -------------------------------------------------------------------------
+
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
+	if(sleeping)
+	{
+		RAIL_Status_t s;
+		osStatus_t oss = osThreadResume(rtid);
 		if (oss != osOK) {
 			err1("oss: %"PRIi32"", oss);
 		}
 		info2("start");
 		m_sleep_time += radio_timestamp() - m_stop_timestamp;
 		start_done_f = start_done;
+
+		// FIXME: Move RAIL access to the radio thread, notify radio thread to do stuff
 		RAIL_Idle(radio_rail_handle, RAIL_IDLE, 1);
 		s = RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 		if (s != RAIL_STATUS_NO_ERROR) {
 			err1("rail err: %"PRIu8"", s);
 		}
 		start_radio = true;
+
 		osMutexRelease(radio_mutex);
 		return COMMS_SUCCESS;
 	} else {
+		osMutexRelease(radio_mutex);
 		return COMMS_FAIL;
 	}
 }
@@ -835,12 +854,24 @@ void radio_run() {
 static void radio_thread(void *p) {
 	osStatus_t oss;
 
-	rtid = osThreadGetId();
 	radio_rail_handle = radio_rail_init();
 	if (radio_rail_handle == NULL) {
 		err1("radio init");
 		while(1) ; // Did this ever happened?
 	}
+
+	while(osMutexAcquire(radio_mutex, 1000) != osOK);
+	rtid = osThreadGetId();
+	osMutexRelease(radio_mutex);
+
+	oss = osThreadSuspend(rtid);
+	if(oss != osOK) {
+		err1("oss %d", (int)oss);
+		while(1);
+	}
+
+	sleeping = false;
+
 	while(true) {
 		if (stop_radio) {
 			RAIL_RxPacketHandle_t rxh;
