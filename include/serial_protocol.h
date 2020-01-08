@@ -13,6 +13,8 @@
 
 #include "cmsis_os2.h"
 
+#define SERIAL_PROTOCOL_ACK_TIMEOUT_MS 100UL
+
 typedef struct serial_protocol serial_protocol_t;
 typedef struct serial_dispatcher serial_dispatcher_t;
 
@@ -135,10 +137,12 @@ struct serial_dispatcher
     const uint8_t * data;
     uint8_t data_length;
     bool ack;
+    bool acked;
+    uint32_t send_time; // Time message was sent, used to determine ack timeout
 
     serial_receive_f * freceiver;
     serial_send_done_f * fsenddone;
-    void* user;
+    void * user;
 
     serial_protocol_t * protocol; // parent
 
@@ -151,7 +155,7 @@ struct serial_protocol
     uint8_t rx_seq_num;
 
     osMutexId_t mutex;
-    osTimerId_t timeout_timer;
+    osTimerId_t sent_timer;
     osTimerId_t send_timer;
 
     serial_dispatcher_t * p_active_dispatcher;

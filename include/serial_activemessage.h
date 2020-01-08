@@ -77,6 +77,7 @@ struct serial_activemessage
 	sam_queue_element_t * free_queue;
 	sam_queue_element_t queue_memory[SERIAL_ACTIVEMESSAGE_QUEUE_LENGTH];
 
+	bool send_busy;
 	uint8_t send_buffer[SERIAL_ACTIVEMESSAGE_MAX_MESSAGE_LENGTH];
 };
 

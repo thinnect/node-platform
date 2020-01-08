@@ -21,7 +21,7 @@
 #define __LOG_LEVEL__ (LOG_LEVEL_serial_protocol & BASE_LOG_LEVEL)
 #include "log.h"
 
-static void serial_protocol_timeout_cb(void* argument);
+static void serial_protocol_sent_cb(void* argument);
 static void serial_protocol_send_cb(void* argument);
 
 bool serial_protocol_init (serial_protocol_t * sp,
@@ -38,7 +38,7 @@ bool serial_protocol_init (serial_protocol_t * sp,
     sp->f_default_receiver = dflt_rcvr;
 
     sp->mutex = osMutexNew(NULL);
-    sp->timeout_timer = osTimerNew(&serial_protocol_timeout_cb, osTimerOnce, sp, NULL);
+    sp->sent_timer = osTimerNew(&serial_protocol_sent_cb, osTimerOnce, sp, NULL);
     sp->send_timer = osTimerNew(&serial_protocol_send_cb, osTimerOnce, sp, NULL);
 
     return true;
@@ -51,6 +51,8 @@ bool serial_protocol_add_dispatcher(serial_protocol_t * sp,
                                     serial_send_done_f * sdf,
                                     void * user)
 {
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
+
     dispatcher->dispatch = dispatch;
     dispatcher->data = NULL;
     dispatcher->data_length = 0;
@@ -69,22 +71,36 @@ bool serial_protocol_add_dispatcher(serial_protocol_t * sp,
     }
     *indirect = dispatcher;
 
+    osMutexRelease(sp->mutex);
     return true;
 }
 
 bool serial_protocol_remove_dispatcher(serial_protocol_t * sp,
                                        serial_dispatcher_t * dispatcher)
 {
-    serial_dispatcher_t** indirect = &(sp->p_dispatchers);
-    while ((*indirect) != dispatcher)
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
+
+    if (dispatcher == sp->p_active_dispatcher)
     {
-        if (NULL == (*indirect)->next)
-        {
-            return false;
-        }
-        indirect = &((*indirect)->next);
+        osMutexRelease(sp->mutex);
+        return false; // the dispatcher is currently busy
     }
-    *indirect = dispatcher->next;
+    else
+    {
+        serial_dispatcher_t** indirect = &(sp->p_dispatchers);
+        while ((*indirect) != dispatcher)
+        {
+            if (NULL == (*indirect)->next)
+            {
+                osMutexRelease(sp->mutex);
+                return false; // Reached the end and did not find the dispatcher
+            }
+            indirect = &((*indirect)->next);
+        }
+        *indirect = dispatcher->next;
+    }
+
+    osMutexRelease(sp->mutex);
     return true;
 }
 
@@ -113,27 +129,18 @@ static bool serial_protocol_deliver(serial_protocol_t * sp, uint8_t dispatch,
     return false;
 }
 
-static void serial_protocol_send_done(serial_protocol_t * sp, bool acked)
-{
-    osTimerStop(sp->timeout_timer);
-
-    sp->p_active_dispatcher->fsenddone(sp->p_active_dispatcher->dispatch,
-                                       sp->p_active_dispatcher->data,
-                                       sp->p_active_dispatcher->data_length,
-                                       acked,
-                                       sp->p_active_dispatcher->user);
-
-    sp->p_active_dispatcher->data = NULL;
-    sp->p_active_dispatcher = NULL;
-
-    osTimerStart(sp->send_timer, 1UL);
-}
-
 static void serial_protocol_send_cb(void* argument)
 {
     serial_protocol_t * sp = (serial_protocol_t *)argument;
 
-    osMutexAcquire(sp->mutex, osWaitForever);
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
+
+    if(NULL != sp->p_active_dispatcher)
+    {
+        debug1("bsy");
+        osMutexRelease(sp->mutex);
+        return;
+    }
 
     serial_dispatcher_t* dp = sp->p_dispatchers; // TODO make scheduling fair for dispatchers
     while (NULL != dp)
@@ -147,6 +154,8 @@ static void serial_protocol_send_cb(void* argument)
 
     if ((NULL != dp) && (NULL != dp->data))
     {
+        sp->p_active_dispatcher = dp;
+
         if (dp->ack)
         {
             uint8_t length = dp->data_length + sizeof(serial_protocol_ackpacket_t);
@@ -158,37 +167,38 @@ static void serial_protocol_send_cb(void* argument)
                 packet->seq_num = ++(sp->tx_seq_num);
                 memcpy(packet->payload, dp->data, dp->data_length);
 
+                dp->send_time = osKernelGetTickCount();
+                dp->acked = false;
                 sp->sendf(sp->send_buffer, length);
             }
             else
             {
-                err1("s"); // Packet silently dropped
+                err1("s"); // Packet dropped
             }
 
-            osTimerStart(sp->timeout_timer, 100UL);
+            osTimerStart(sp->sent_timer, osKernelGetTickFreq()*SERIAL_PROTOCOL_ACK_TIMEOUT_MS/1000);
         }
         else
         {
             uint8_t length = dp->data_length + sizeof(serial_protocol_packet_t);
             if(length <= sizeof(sp->send_buffer))
             {
-
                 serial_protocol_packet_t* packet = (serial_protocol_packet_t*)(sp->send_buffer);
                 packet->protocol = SERIAL_PROTOCOL_PACKET;
                 packet->dispatch = dp->dispatch;
                 memcpy(packet->payload, dp->data, dp->data_length);
 
+                dp->send_time = osKernelGetTickCount();
+                dp->acked = false;
                 sp->sendf(sp->send_buffer, length);
             }
             else
             {
-                err1("s"); // Packet silently dropped
+                err1("s"); // Packet dropped
             }
 
-            osTimerStart(sp->timeout_timer, 1UL); // Minimal possible delay
+            osTimerStart(sp->sent_timer, 1UL); // Minimal possible delay
         }
-
-        sp->p_active_dispatcher = dp;
     }
     else
     {
@@ -198,18 +208,70 @@ static void serial_protocol_send_cb(void* argument)
     osMutexRelease(sp->mutex);
 }
 
-static void serial_protocol_timeout_cb(void* argument)
+static void serial_protocol_sent_cb(void* argument)
 {
     serial_protocol_t * sp = (serial_protocol_t *)argument;
 
-    osMutexAcquire(sp->mutex, osWaitForever);
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
 
     if (NULL != sp->p_active_dispatcher)
     {
-        serial_protocol_send_done(sp, false);
-    }
+        serial_dispatcher_t * dsp = sp->p_active_dispatcher;
+        if (dsp->ack)
+        {
+            if (false == dsp->acked)
+            {
+                uint32_t passed = osKernelGetTickCount() - dsp->send_time;
+                if (1000*passed/osKernelGetTickFreq() >= SERIAL_PROTOCOL_ACK_TIMEOUT_MS)
+                {
+                    // sent, but not acked
+                }
+                else
+                {
+                    uint32_t remaining = (osKernelGetTickFreq()*(SERIAL_PROTOCOL_ACK_TIMEOUT_MS-passed)/1000);
+                    osTimerStart(sp->sent_timer, remaining+1UL);
+                    debug1("wait %"PRIu32, remaining);
+                    osMutexRelease(sp->mutex);
+                    return;
+                }
+            }
+            else
+            {
+                // sent and acked
+            }
+        }
+        else
+        {
+            // sent
+        }
 
-    osMutexRelease(sp->mutex);
+        // Copy arguments and release dispatcher
+        const uint8_t * data = dsp->data;
+        uint8_t length = dsp->data_length;
+        bool acked = dsp->acked;
+
+        // Free the dispatcher
+        sp->p_active_dispatcher->data = NULL;
+        sp->p_active_dispatcher->ack = false; // Ignore any late acks
+
+        // Do the callback without holding the mutex
+        osMutexRelease(sp->mutex);
+
+        // dispatch, user and the callback are immutable as long as the dispatcher is registered
+        dsp->fsenddone(dsp->dispatch, data, length, acked, dsp->user);
+
+        // Unlock the dispatcher
+        while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
+        sp->p_active_dispatcher = NULL;
+        osMutexRelease(sp->mutex);
+
+        // Check for pending messages
+        osTimerStart(sp->send_timer, 1UL);
+    }
+    else
+    {
+        osMutexRelease(sp->mutex);
+    }
 }
 
 void serial_protocol_receive_generic (void * sp, const uint8_t data[], uint8_t length)
@@ -219,7 +281,7 @@ void serial_protocol_receive_generic (void * sp, const uint8_t data[], uint8_t l
 
 void serial_protocol_receive (serial_protocol_t * sp, const uint8_t data[], uint8_t length)
 {
-    osMutexAcquire(sp->mutex, osWaitForever);
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
 
     if (length > 0)
     {
@@ -235,7 +297,8 @@ void serial_protocol_receive (serial_protocol_t * sp, const uint8_t data[], uint
                         if(ack->seq_num == sp->tx_seq_num)
                         {
                             debug1("ack %02X", (unsigned int)ack->seq_num);
-                            serial_protocol_send_done(sp, true);
+                            sp->p_active_dispatcher->acked = true;
+                            osTimerStart(sp->sent_timer, 1UL); // Minimal possible delay
                         }
                         else
                         {
@@ -316,7 +379,7 @@ bool serial_protocol_send (serial_dispatcher_t* dispatcher, const uint8_t data[]
     serial_protocol_t * sp = dispatcher->protocol;
     bool ret = true;
 
-    osMutexAcquire(sp->mutex, osWaitForever);
+    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
 
     if (NULL != dispatcher->data)
     {
@@ -327,11 +390,7 @@ bool serial_protocol_send (serial_dispatcher_t* dispatcher, const uint8_t data[]
         dispatcher->data = data;
         dispatcher->data_length = length;
         dispatcher->ack = ack;
-
-        if (NULL == sp->p_active_dispatcher)
-        {
-            osTimerStart(sp->send_timer, 1UL); // Defer, 0 not possible
-        }
+        osTimerStart(sp->send_timer, 1UL); // Defer, 0 not possible
     }
 
     osMutexRelease(sp->mutex);
