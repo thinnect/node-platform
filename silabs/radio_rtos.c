@@ -59,8 +59,6 @@ static RAIL_Status_t rx_fifo_status;
 static uint8_t radio_tx_num;
 static bool radio_tx_wait_ack;
 
-
-
 static volatile bool sleeping;
 static volatile bool sleep_ready;
 static volatile bool stop_radio;
@@ -117,6 +115,35 @@ static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle) {
 static void radio_rail_config_changed_cb(RAIL_Handle_t radio_rail_handle, const RAIL_ChannelConfigEntry_t *entry) {
 }
 
+// General radio configuration, may be tweaked between init and start
+static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
+	.addresses = NULL,
+	.ackConfig = {
+		.enable = true,
+		.ackTimeout = 864, // 54 symbols * 16 us/symbol = 864 us.
+		.rxTransitions = {
+			.success = RAIL_RF_STATE_RX,
+			.error = RAIL_RF_STATE_RX // ignored
+		},
+		.txTransitions = {
+			.success = RAIL_RF_STATE_RX,
+			.error = RAIL_RF_STATE_RX // ignored
+		}
+	},
+	.timings = {
+		.idleToTx = 100,
+		.idleToRx = 100,
+		.rxToTx = 192, // 192
+		// Make txToRx slightly lower than desired to make sure we get to RX in time
+		.txToRx = 192 - 10, // 192 - 10
+		.rxSearchTimeout = 0,
+		.txToRxSearchTimeout = 0
+	},
+	.framesMask = RAIL_IEEE802154_ACCEPT_STANDARD_FRAMES,// | RAIL_IEEE802154_ACCEPT_ACK_FRAMES,
+	.promiscuousMode = false,
+	.isPanCoordinator = false
+};
+
 
 comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	radio_channel = channel;
@@ -163,45 +190,25 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 	return (comms_layer_t *)&radio_iface;
 }
 
+
+// Configure radio promiscuous mode, will take effect after radio is stopped and restarted
+void radio_set_promiscuous(bool promiscuous) {
+	m_radio_ieee802154_config.promiscuousMode = promiscuous;
+}
+
+
+static RAIL_Handle_t radio_rail_init() {
+	RAIL_Handle_t handle;
+
+	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
+
 	static RAIL_Config_t rail_config = {
 		.eventsCallback = &radio_rail_event_cb
-	};
-	static const RAIL_IEEE802154_Config_t ieee802154_config = {
-		.addresses = NULL,
-		.ackConfig = {
-			.enable = true,
-			.ackTimeout = 864, // 54 symbols * 16 us/symbol = 864 us.
-			.rxTransitions = {
-				.success = RAIL_RF_STATE_RX,
-				.error = RAIL_RF_STATE_RX // ignored
-			},
-			.txTransitions = {
-				.success = RAIL_RF_STATE_RX,
-				.error = RAIL_RF_STATE_RX // ignored
-			}
-		},
-		.timings = {
-			.idleToTx = 100,
-			.idleToRx = 100,
-			.rxToTx = 192, // 192
-			// Make txToRx slightly lower than desired to make sure we get to RX in time
-			.txToRx = 192 - 10, // 192 - 10
-			.rxSearchTimeout = 0,
-			.txToRxSearchTimeout = 0
-		},
-		.framesMask = RAIL_IEEE802154_ACCEPT_STANDARD_FRAMES,// | RAIL_IEEE802154_ACCEPT_ACK_FRAMES,
-		.promiscuousMode = false,
-		.isPanCoordinator = false
 	};
 
 	RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
 
   	static const RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
-
-RAIL_Handle_t radio_rail_init() {
-	RAIL_Handle_t handle;
-
-	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
 
 	radio_restart = false;
 	radio_send_done_flag = false;
@@ -327,7 +334,7 @@ RAIL_Handle_t radio_rail_init() {
 		debug4("cfg ant %d");
 	#endif//_SILICON_LABS_32B_SERIES_2
 
-	if(RAIL_STATUS_NO_ERROR != RAIL_IEEE802154_Init(handle, &ieee802154_config)) {
+	if(RAIL_STATUS_NO_ERROR != RAIL_IEEE802154_Init(handle, &m_radio_ieee802154_config)) {
 		err1("init");
 		return NULL;
 	}
