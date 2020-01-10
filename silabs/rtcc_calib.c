@@ -47,7 +47,7 @@ static void ref_timer_enable ()
 
     TIMER_Init_TypeDef timerInit =
     {
-        .enable = true,
+        .enable = false,
         .debugRun = false,
         .prescale = timerPrescale1024,
         .clkSel = timerClkSelHFPerClk,
@@ -65,8 +65,10 @@ static void ref_timer_enable ()
     #endif
     CMU_ClockEnable(RTCC_TEST_REFERENCE_CLOCK, true);
 
+    TIMER_Reset(RTCC_TEST_REFERENCE);
     TIMER_Init(RTCC_TEST_REFERENCE, &timerInit);
     TIMER_TopSet(RTCC_TEST_REFERENCE, 0xFFFFFFFF);
+    TIMER_Enable(RTCC_TEST_REFERENCE, true);
 }
 
 static uint32_t ref_timer_get ()
@@ -116,10 +118,10 @@ static void calibration_loop (void *arg)
     {
         osDelay(m_period_ms);
 
+        SLEEP_SleepBlockBegin(sleepEM2); // Must block sleep modes that stop the reference timer
+
         ref_timer_enable();
         debug1("stblzng");
-
-        SLEEP_SleepBlockBegin(sleepEM1); // Must block sleep modes that stop the reference timer
 
         osDelay(10000); // Wait 10 seconds for things to stabilize
 
@@ -138,7 +140,7 @@ static void calibration_loop (void *arg)
         vPortExitCritical();
 
         ref_timer_disable();
-        SLEEP_SleepBlockEnd(sleepEM1);
+        SLEEP_SleepBlockEnd(sleepEM2);
 
         uint32_t freq = (uint32_t)(((uint64_t)37500)*(ertc - rtc)/(etmr - tmr));
         debug1("rtc: %u/%u tmr: %u/%u freq %"PRIu32, rtc, ertc, tmr, etmr, freq);
