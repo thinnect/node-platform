@@ -48,6 +48,7 @@ static bool m_buf_full = false;
 static osThreadId_t m_ldma_thread;
 static osMutexId_t m_log_mutex;
 static bool m_ldma_idle;
+static bool m_uart_active;
 
 #ifdef LOGGER_LDMA_LEUART0
 static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ldmaPeripheralSignal_LEUART0_TXBL);
@@ -94,9 +95,13 @@ static void unsafe_try_ldma_start (void)
 		 	// USART works in EM0 and EM1
 			SLEEP_SleepBlockBegin(sleepEM2);
 
-			// Enable debug serial and wait for 1ms
-			RETARGET_SerialInit();
-			osDelay(1);
+			if (false == m_uart_active)
+			{
+				// Enable debug serial and wait for 1ms
+				RETARGET_SerialInit();
+				osDelay(1);
+				m_uart_active = true;
+			}
 		}
 
 		// Configure LDMA transfer
@@ -128,11 +133,14 @@ static void unsafe_try_ldma_start (void)
 			m_ldma_idle = true;
 			SLEEP_SleepBlockEnd(sleepEM2);
 
-			// Disable debug serial
-			USART_Enable(RETARGET_UART, usartDisable);
-			CMU_ClockEnable(RETARGET_CLK, false);
-			GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModeDisabled, 0);
-			GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeDisabled, 0);
+			// Disable debug serial if low-power operation is not disabled
+			#ifndef LOGGER_LDMA_DISABLE_SLEEP
+				USART_Enable(RETARGET_UART, usartDisable);
+				CMU_ClockEnable(RETARGET_CLK, false);
+				GPIO_PinModeSet(RETARGET_TXPORT, RETARGET_TXPIN, gpioModeDisabled, 0);
+				GPIO_PinModeSet(RETARGET_RXPORT, RETARGET_RXPIN, gpioModeDisabled, 0);
+				m_uart_active = false;
+			#endif
 		}
 	}
 }
@@ -163,7 +171,7 @@ static void ldma_thread (void* argument)
     {
     	osThreadFlagsWait(LOGGER_LDMA_DONE_THREAD_FLAG, osFlagsWaitAny, osWaitForever);
 
-		while (osMutexAcquire(m_log_mutex, osWaitForever) != osOK);
+		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
 		m_buf_full = false;
 		m_buf_start = m_buf_pos;
@@ -183,6 +191,7 @@ int logger_ldma_init ()
 {
 	const osThreadAttr_t ldma_thread_attr = { .name = "ldma" };
 	m_ldma_idle = true;
+	m_uart_active = false;
 	m_log_mutex = osMutexNew(NULL);
 	m_ldma_thread = osThreadNew(ldma_thread, NULL, &ldma_thread_attr);
 
@@ -217,7 +226,7 @@ int logger_ldma (const char *ptr, int len)
 {
 	uint16_t space;
 
-	while (osMutexAcquire(m_log_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
 	if (m_buf_full == false)
 	{
