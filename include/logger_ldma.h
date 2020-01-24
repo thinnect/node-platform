@@ -16,6 +16,8 @@
 #define LOGGER_LDMA_BUFFER_LENGTH 4096
 #endif//LOGGER_LDMA_BUFFER_LENGTH
 
+#include "retargetserialconfig.h"
+
 /*
  * Initialize the LDMA logging system.
  */
@@ -29,11 +31,11 @@ int logger_ldma(const char *ptr, int len);
 
 #if defined(LOGGER_LDMA_LEUART0)
 // Logging will be through LEUART0
-#elif defined(LOGGER_LDMA_UART0)
+#elif defined(LOGGER_LDMA_USART0)
 // Logging will be through USART0
-#elif defined(LOGGER_LDMA_UART1)
+#elif defined(LOGGER_LDMA_USART1)
 // Logging will be through USART1
-#elif defined(LOGGER_LDMA_UART2)
+#elif defined(LOGGER_LDMA_USART2)
 // Logging will be through USART2
 #else
 #error "LDMA logging not configured or configuration not supported!"

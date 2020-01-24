@@ -23,9 +23,20 @@ extern comms_layer_am_t radio_iface;
 extern uint16_t radio_address;
 
 comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address);
+
+// Configure promiscuous mode
+void radio_set_promiscuous(bool promiscuous);
+
 void radio_idle();
+
 void radio_reenable();
 void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id);
+
+/**
+ * Radio statistics - count time radio is initialized, but sleeping.
+ * @return sleep time in milliseconds.
+ */
+uint32_t radio_sleep_time();
 
 /**
  * Poll the radio.

@@ -1,6 +1,10 @@
 language: c
 sudo: false
+addons:
+  apt:
+    packages:
+      - ruby
+
 script:
   - make -C test/uuid
-  - cd test/uuid
-  - ./test-uuid
+  - make -C test/hdlc
