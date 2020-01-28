@@ -42,6 +42,7 @@ extern void vPortExitCritical();
 #define __MODUUL__ "radio"
 #define __LOG_LEVEL__ (LOG_LEVEL_radio & BASE_LOG_LEVEL)
 #include "log.h"
+#include "sys_panic.h" // Also makes use of __MODUUL__
 
 volatile int g_rail_invalid_actions = 0;
 
@@ -360,7 +361,7 @@ static RAIL_Handle_t radio_rail_init() {
 
 	if(RAIL_STATUS_NO_ERROR != RAIL_StartRx(handle, radio_channel, NULL)) {
 		err1("StartRx");
-		while(1);
+		sys_panic("srx");
 	}
 	debug4("railstartup fifo:%d", rx_fifo_status);
 
@@ -519,6 +520,10 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 static void radio_send_message(comms_msg_t* msg) {
 	static uint8_t buffer[160];
 
+	if (NULL == msg) {
+		sys_panic("snull");
+	}
+
 	while(osMutexAcquire(radio_mutex, 1000) != osOK);
 
 	comms_layer_t* iface = (comms_layer_t *)&radio_iface;
@@ -662,8 +667,7 @@ void radio_run() {
 		warn1("restart");
 		radio_rail_handle = radio_rail_init();
 		if(radio_rail_handle == NULL) {
-			__ASM volatile("cpsid i" : : : "memory");
-			while(1);
+			sys_panic("rail");
 		}
 		if(radio_msg_sending != NULL) { // If sending, cancel and notify user
 			radio_send_fail = true;
@@ -677,6 +681,10 @@ void radio_run() {
 
 	// Sending has completed ---------------------------------------------------
 	if(radio_send_done_flag) {
+		// FIXME: this can happen - work around it !!! TODO
+		if(NULL == radio_msg_sending) {
+			sys_panic("null");
+		}
 		if(radio_tx_wait_ack) { // Alternatively we should get rx_ack_timeout
 			debug1("ackd %d", rx_ack_timeout);
 			comms_ack_received((comms_layer_t *)&radio_iface, radio_msg_sending->msg);
@@ -691,7 +699,7 @@ void radio_run() {
 		RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 		osMutexRelease(radio_mutex);
 
-		debug1("TIMEOUT");
+		err1("TIMEOUT");
 		signal_send_done(COMMS_ETIMEOUT);
 	}
 
@@ -699,10 +707,14 @@ void radio_run() {
 	if(radio_send_busy) {
 		bool resend = false;
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
-		radio_send_busy = false;
-		if(radio_send_retries < 7) {
-			resend = true;
-			radio_send_retries++;
+		if(NULL != radio_msg_sending) {
+			radio_send_busy = false;
+			if(radio_send_retries < 7) {
+				resend = true;
+				radio_send_retries++;
+			}
+		} else {
+			err1("not sending");
 		}
 		osMutexRelease(radio_mutex);
 		if(resend) {
@@ -757,6 +769,8 @@ void radio_run() {
 	if(rx_ack_timeout) {
 		bool resend = false;
 
+		// FIXME: What if we don't have a message
+
 		while(osMutexAcquire(radio_mutex, 1000) != osOK);
 
 		if(comms_get_retries_used((comms_layer_t *)&radio_iface, radio_msg_sending->msg) < comms_get_retries((comms_layer_t *)&radio_iface, radio_msg_sending->msg)) {
@@ -804,19 +818,19 @@ void radio_run() {
 				uint32_t rts = 0; // timeReceived.packetTime
 
 				if((packetInfo.packetBytes > 11) && (packetInfo.firstPortionData == NULL)) {
-					while(1);
+					sys_panic("packet");
 				}
 				if((packetInfo.packetBytes - packetInfo.firstPortionBytes != 0) && (packetInfo.lastPortionData == NULL)) {
-					while(1);
+					sys_panic("packet");
 				}
 				if(packetInfo.firstPortionBytes > 255) {
-					while(1) ;
+					sys_panic("packet");
 				}
 				if(packetInfo.packetBytes > 255) {
-					while(1);
+					sys_panic("packet");
 				}
 				if(packetInfo.firstPortionBytes > packetInfo.packetBytes) {
-					while(1);
+					sys_panic("packet");
 				}
 
 				if(rts_valid) {
@@ -840,7 +854,7 @@ void radio_run() {
 				RAIL_Status_t rst = RAIL_ReleaseRxPacket(radio_rail_handle, packetHandle);
 				if(rst != RAIL_STATUS_NO_ERROR) {
 					warnb1("rst", &rst, sizeof(RAIL_Status_t));
-					while(1);
+					sys_panic("release");
 				}
 
 				uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
@@ -866,7 +880,7 @@ void radio_run() {
 								   (buffer[packetInfo.packetBytes - 1]);
 
 						if((packetInfo.packetBytes < 17) || (packetInfo.packetBytes > 200)) {
-							while(1);
+							sys_panic("packet");
 						}
 						amid = buffer[(packetInfo.packetBytes-5)];
 						plen = packetInfo.packetBytes - 17;
@@ -922,7 +936,7 @@ static void radio_thread(void *p) {
 	radio_rail_handle = radio_rail_init();
 	if (radio_rail_handle == NULL) {
 		err1("radio init");
-		while(1) ; // Did this ever happened?
+		sys_panic("rail");
 	}
 
 	while(osMutexAcquire(radio_mutex, 1000) != osOK);
@@ -932,7 +946,7 @@ static void radio_thread(void *p) {
 	oss = osThreadSuspend(rtid);
 	if(oss != osOK) {
 		err1("oss %d", (int)oss);
-		while(1);
+		sys_panic("thread");
 	}
 
 	sleeping = false;
@@ -965,7 +979,7 @@ static void radio_thread(void *p) {
 					RAIL_Status_t rst = RAIL_ReleaseRxPacket(radio_rail_handle, rxh);
 					if(rst != RAIL_STATUS_NO_ERROR) {
 						warnb1("rst", &rst, sizeof(RAIL_Status_t));
-						while(1);
+						sys_panic("release");
 					}
 				}
 				m_stop_timestamp = radio_timestamp();
@@ -1099,8 +1113,7 @@ void RAILCb_AssertFailed(RAIL_Handle_t railHandle, RAIL_AssertErrorCodes_t error
 	else if(errorCode == RAIL_ASSERT_INVALID_MODULE_ACTION) {
 		g_rail_invalid_actions++;
 	} else {
-		__ASM volatile("cpsid i" : : : "memory");
 		global_rail_error_code = errorCode;
-		while(1);
+		sys_panic("railerr");
 	}
 }
