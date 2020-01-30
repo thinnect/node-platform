@@ -1245,6 +1245,8 @@ static void stop_radio_now ()
 
 static void radio_thread (void * p)
 {
+	bool running = false;
+
 	m_rail_handle = radio_rail_init();
 	if (m_rail_handle == NULL)
 	{
@@ -1254,8 +1256,20 @@ static void radio_thread (void * p)
 
 	for (;;)
 	{
-		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
+		uint32_t flags = osFlagsErrorTimeout;
 		RadioState_t state;
+
+		while(osFlagsErrorTimeout == flags)
+		{
+			if (running) // must prevent sleep, but permit thread switches if no flags
+			{
+				flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, configEXPECTED_IDLE_TIME_BEFORE_SLEEP - 1);
+			}
+			else // wait forever and let kernel sleep
+			{
+				flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
+			}
+		}
 
 		while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 		state = m_state;
@@ -1265,6 +1279,7 @@ static void radio_thread (void * p)
 		if (ST_STARTING == state)
 		{
 			start_radio_now();
+			running = true;
 		}
 
 		// If an exception has occurred and RAIL is broken ---------------------
@@ -1298,6 +1313,7 @@ static void radio_thread (void * p)
 			if (ST_STOPPING == state)
 			{
 				stop_radio_now(); // Will return queued messages
+				running = false;
 			}
 			else
 			{
