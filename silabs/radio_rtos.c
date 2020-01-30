@@ -50,10 +50,12 @@ extern void vPortExitCritical();
 
 // queue -----------------------------------------------------------------------
 typedef struct radio_queue_element radio_queue_element_t;
-struct radio_queue_element {
+struct radio_queue_element
+{
 	comms_msg_t* msg;
 	comms_send_done_f *send_done;
 	void *user;
+	uint32_t timestamp_queued;
 	radio_queue_element_t* next;
 };
 // -----------------------------------------------------------------------------
@@ -260,7 +262,9 @@ comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
 	m_state = ST_OFF; // Radio initialized, but not turned ON yet
 	m_radio_busy = false; // Protected busy state
 
-	info1("channel %d pan %02X rfpower %d", (int)channel, (int)pan_id, (int)DEFAULT_RFPOWER_DBM);
+	info1("channel %d pan %02X rfpwr %d",
+		(int)channel, (int)pan_id,
+		(int)DEFAULT_RFPOWER_DBM);
 
 	return (comms_layer_t *)&m_radio_iface;
 }
@@ -293,6 +297,7 @@ void radio_set_promiscuous(bool promiscuous)
 static RAIL_Handle_t radio_rail_init ()
 {
 	RAIL_Handle_t handle;
+	RAIL_Status_t rs;
 
 	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
 
@@ -346,8 +351,22 @@ static RAIL_Handle_t radio_rail_init ()
 	RAIL_EnablePaCal(true);
 
 	// Declare the structure used to configure the PA
-	//RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 1800, 10 };
-	static RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 3300, 10 };
+	// Battery: { RAIL_TX_POWER_MODE_2P4_HP, 1800, 10 };
+
+	#if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_LP)
+		#pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_LP"
+		#define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_LP
+	#endif
+	#if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_MP)
+		#pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_MP"
+		#define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_MP
+	#endif
+	#if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_HP)
+		#pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_HP"
+		#define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_HP
+	#endif
+
+	static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE, 3300, 10 };
 
 	if (RAIL_STATUS_NO_ERROR != RAIL_ConfigTxPower(handle, &txPowerConfig))
 	{
@@ -357,11 +376,13 @@ static RAIL_Handle_t radio_rail_init ()
 		// Please ensure your configuration is valid for the selected part.
 	}
 
-	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
-	RAIL_GetTxPowerConfig(handle, &txPowerConfig);
-	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(handle, txPowerConfig.mode, power);
+	#if defined(DEFAULT_RFPOWER_RAW)
+		rs = RAIL_SetTxPower(handle, DEFAULT_RFPOWER_RAW);
+	#else
+		rs = RAIL_SetTxPowerDbm(handle, DEFAULT_RFPOWER_DBM * 10); // RAIL uses deci-dBm
+	#endif
 
-	if (RAIL_STATUS_NO_ERROR != RAIL_SetTxPower(handle, powerLevel))
+	if (RAIL_STATUS_NO_ERROR != rs)
 	{
 		err1("set pwr");
 		return NULL;
@@ -463,7 +484,10 @@ static RAIL_Handle_t radio_rail_init ()
 	{
 		sys_panic("srx");
 	}
-	debug4("railstartup fifo:%d", m_rx_fifo_status);
+	debug4("railstartup fifo:%d txpwr:%d ddBm %d raw",
+		(int)m_rx_fifo_status,
+		(int)RAIL_GetTxPowerDbm(handle),
+		(int)RAIL_GetTxPower(handle));
 
 	return handle;
 }
@@ -521,7 +545,7 @@ static void radio_send_timeout_cb (void * argument)
 }
 
 
-static comms_error_t radio_start(comms_layer_iface_t * iface, comms_status_change_f * start_done, void * user)
+static comms_error_t radio_start (comms_layer_iface_t * iface, comms_status_change_f * start_done, void * user)
 {
 	comms_error_t err = COMMS_SUCCESS;
 	if (iface != (comms_layer_iface_t *)&m_radio_iface)
@@ -529,7 +553,7 @@ static comms_error_t radio_start(comms_layer_iface_t * iface, comms_status_chang
 		return COMMS_EINVAL;
 	}
 
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
 	if (ST_STARTING == m_state)
 	{
@@ -553,7 +577,7 @@ static comms_error_t radio_start(comms_layer_iface_t * iface, comms_status_chang
 }
 
 
-static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_f * stop_done, void * user)
+static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change_f * stop_done, void * user)
 {
 	comms_error_t err = COMMS_SUCCESS;
 	if (iface != (comms_layer_iface_t *)&m_radio_iface)
@@ -561,7 +585,7 @@ static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_
 		return COMMS_EINVAL;
 	}
 
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
 	if (ST_STOPPING == m_state)
 	{
@@ -585,7 +609,8 @@ static comms_error_t radio_stop(comms_layer_iface_t* iface, comms_status_change_
 }
 
 
-static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user)
+static comms_error_t radio_send (comms_layer_iface_t * iface, comms_msg_t * msg,
+                                 comms_send_done_f * send_done, void * user)
 {
 	comms_error_t err = COMMS_FAIL;
 
@@ -594,7 +619,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 		return(COMMS_EINVAL);
 	}
 
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
 	if (ST_RUNNING != m_state)
 	{
@@ -609,6 +634,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 		qm->msg = msg;
 		qm->send_done = send_done;
 		qm->user = user;
+		qm->timestamp_queued = radio_timestamp();
 		qm->next = NULL;
 
 		if (radio_msg_queue_head == NULL)
@@ -618,7 +644,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 		else
 		{
 			radio_queue_element_t* qn = (radio_queue_element_t*)radio_msg_queue_head;
-			while(qn->next != NULL)
+			while (qn->next != NULL)
 			{
 				qn = qn->next;
 			}
@@ -630,7 +656,9 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 
 		info3("snd %p", msg);
 		err = COMMS_SUCCESS;
-	} else {
+	}
+	else
+	{
 		warn1("busy");
 		err = COMMS_ENOMEM;
 	}
@@ -641,7 +669,7 @@ static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, co
 }
 
 
-static void radio_send_message(comms_msg_t* msg)
+static void radio_send_message (comms_msg_t * msg)
 {
 	static uint8_t buffer[160];
 
@@ -659,19 +687,24 @@ static void radio_send_message(comms_msg_t* msg)
 
 	count = comms_get_payload_length(iface, msg);
 	src = comms_am_get_source(iface, msg);
-	if (src == 0) {
+	if (src == 0)
+	{
 		src = m_radio_address;
 	}
 	dst = comms_am_get_destination(iface, msg);
-	if (dst == 0) {
+	if (dst == 0)
+	{
 		warn1("dest not set");
 	}
 	amid = comms_get_packet_type(iface, msg);
 	// is ack and not broadcast
-	if (comms_is_ack_required(iface, msg) && (dst != 0xFFFF)) {
+	if (comms_is_ack_required(iface, msg) && (dst != 0xFFFF))
+	{
 		radio_tx_wait_ack = true;
 		buffer[1] = 0x61;
-	} else {
+	}
+	else
+	{
 		radio_tx_wait_ack = false;
 		buffer[1] = 0x41;
 	}
@@ -685,7 +718,8 @@ static void radio_send_message(comms_msg_t* msg)
 	buffer[9] = ((src >> 8) & 0xFF);
 	buffer[10] = 0x3F;
 	buffer[11] = amid;
-	if (comms_event_time_valid(iface, msg)) {
+	if (comms_event_time_valid(iface, msg))
+	{
 		uint32_t evt_time, diff;
 		//debug1("evt time valid");
 		buffer[11] = 0x3d;
@@ -701,7 +735,9 @@ static void radio_send_message(comms_msg_t* msg)
 		buffer[15+count] = diff>>8;
 		buffer[16+count] = diff;
 		count += 5;
-	} else {
+	}
+	else
+	{
 		//debug1("evt time NOT valid");
 		buffer[11] = amid;
 		memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
@@ -716,12 +752,16 @@ static void radio_send_message(comms_msg_t* msg)
 	m_rail_send_timestamp = m_rail_sent_timestamp = RAIL_GetTime();
 
 	// if ack is required in FCF
-	if (radio_tx_wait_ack) {
+	if (radio_tx_wait_ack)
+	{
 		rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
-	} else {
+	}
+	else
+	{
 		rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel, 0, &csmaConf, NULL);
 	}
-	debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d", src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
+	debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
+	       src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
 
 	if (rslt == RAIL_STATUS_NO_ERROR)
 	{
@@ -745,7 +785,7 @@ static void radio_resend_timeout_cb(void * argument)
 static void radio_send_next()
 {
 	comms_msg_t * msg = NULL;
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 	if (NULL != radio_msg_queue_head)
 	{
 		radio_msg_sending = radio_msg_queue_head;
@@ -768,7 +808,7 @@ static void radio_resend()
 {
 	comms_msg_t * msg = NULL;
 
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 	uint8_t retu = comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg) + 1;
 	comms_set_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg, retu);
 	msg = radio_msg_sending->msg;
@@ -786,6 +826,7 @@ static void signal_send_done (comms_error_t err)
 	comms_send_done_f * send_done = NULL;
 	comms_msg_t * msgp;
 	void * user;
+	uint32_t qtime;
 
 	osTimerStop(m_send_timeout_timer);
 
@@ -794,6 +835,7 @@ static void signal_send_done (comms_error_t err)
 	user = radio_msg_sending->user;
 	msgp = radio_msg_sending->msg;
 	send_done = radio_msg_sending->send_done;
+	qtime = radio_timestamp() - radio_msg_sending->timestamp_queued;
 
 	radio_msg_sending->next = (radio_queue_element_t*)radio_msg_queue_free;
 	radio_msg_queue_free = radio_msg_sending;
@@ -805,8 +847,16 @@ static void signal_send_done (comms_error_t err)
 		_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
 	}
 
-	logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN1, "snt %p e:%d t:%"PRIu32,
-	       msgp, err, m_rail_sent_timestamp - m_rail_send_timestamp);
+	if (qtime > 20)
+	{
+		warn1("slow tx %"PRIu32, qtime);
+	}
+
+	logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN1,
+	      "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
+	       msgp, err,
+	       qtime,
+	       m_rail_sent_timestamp - m_rail_send_timestamp);
 
 	assert(NULL != send_done);
 	send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
@@ -998,6 +1048,8 @@ static void handle_radio_tx (uint32_t flags)
 		{
 			bool resend = false;
 
+			osTimerStop(m_send_timeout_timer);
+
 			if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg) < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
 			{
 				resend = true;
@@ -1021,6 +1073,8 @@ static void handle_radio_tx (uint32_t flags)
 		{
 			bool resend = false;
 
+			osTimerStop(m_send_timeout_timer);
+
 			if (m_csma_retries < 7)
 			{
 				resend = true;
@@ -1033,6 +1087,7 @@ static void handle_radio_tx (uint32_t flags)
 			}
 			else
 			{
+				// TODO account for PacketLink
 				signal_send_done(COMMS_EBUSY);
 			}
 		}
@@ -1137,7 +1192,10 @@ static void start_radio_now ()
 		err1("rail err: %"PRIu8"", s);
 	}
 
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 	m_state = ST_RUNNING;
+	osMutexRelease(m_radio_mutex);
+
 	m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
 }
 
@@ -1149,10 +1207,11 @@ static void stop_radio_now ()
 	RAIL_Idle(m_rail_handle, RAIL_IDLE, 1);
 
 	// Return any pending TX messages with COMMS_EOFF
+	// No mutex, queue cannot change - send not accepting msgs in stop state
 	while (NULL != radio_msg_queue_head)
 	{
 		radio_queue_element_t* qe = radio_msg_queue_head;
-		warn1("rmqh %p", qe->msg);
+		warn1("rm txmsg %p", qe->msg);
 		qe->send_done((comms_layer_t *)&m_radio_iface, qe->msg, COMMS_EOFF, qe->user);
 
 		radio_msg_queue_head = qe->next;
@@ -1164,7 +1223,7 @@ static void stop_radio_now ()
 	RAIL_RxPacketHandle_t rxh;
 	while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
 	{
-		warn1("rxmsg");
+		warn1("rm rxmsg");
 		RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
 		if (rst != RAIL_STATUS_NO_ERROR)
 		{
@@ -1176,7 +1235,10 @@ static void stop_radio_now ()
 	m_stop_timestamp = radio_timestamp();
 	SLEEP_SleepBlockEnd(sleepEM2);
 
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 	m_state = ST_OFF;
+	osMutexRelease(m_radio_mutex);
+
 	m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STOPPED, m_state_change_user);
 }
 
@@ -1195,7 +1257,7 @@ static void radio_thread (void * p)
 		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 		RadioState_t state;
 
-		while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+		while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 		state = m_state;
 		m_radio_busy = (radio_msg_sending != NULL)||(radio_msg_queue_head != NULL);
 		osMutexRelease(m_radio_mutex);
@@ -1259,7 +1321,7 @@ bool radio_poll ()
 {
 	bool busy;
 
-	while(osMutexAcquire(m_radio_mutex, osWaitForever) != osOK);
+	while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 	busy = m_radio_busy;
 	osMutexRelease(m_radio_mutex);
 
@@ -1327,7 +1389,7 @@ static void radio_rail_event_cb (RAIL_Handle_t m_rail_handle, RAIL_Events_t even
 				// packet would have been discarded if it was ack
 				if (rxh != RAIL_RX_PACKET_HANDLE_INVALID)
 				{
-					if (osMessageQueuePut(m_rx_queue, &rxh, 0, 0) != osOK)
+					if (osOK != osMessageQueuePut(m_rx_queue, &rxh, 0, 0))
 					{
 						RAIL_ReleaseRxPacket(m_rail_handle, rxh);
 						rx_busy++;
