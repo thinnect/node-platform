@@ -365,6 +365,9 @@ static RAIL_Handle_t radio_rail_init ()
 		#pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_HP"
 		#define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_HP
 	#endif
+	#ifndef DEFAULT_RAIL_TX_POWER_MODE
+		#error "Must select PA by defining a variant of DEFAULT_RAIL_TX_POWER_MODE_2P4_[HP/MP/LP]!"
+	#endif
 
 	static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE, 3300, 10 };
 
@@ -484,10 +487,8 @@ static RAIL_Handle_t radio_rail_init ()
 	{
 		sys_panic("srx");
 	}
-	debug4("railstartup fifo:%d txpwr:%d ddBm %d raw",
-		(int)m_rx_fifo_status,
-		(int)RAIL_GetTxPowerDbm(handle),
-		(int)RAIL_GetTxPower(handle));
+	debug4("railstartup fifo:%d", (int)m_rx_fifo_status);
+	info1("rail txpwr: %d ddBm %d raw", (int)RAIL_GetTxPowerDbm(handle), (int)RAIL_GetTxPower(handle));
 
 	return handle;
 }
