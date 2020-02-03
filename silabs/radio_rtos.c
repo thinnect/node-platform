@@ -12,6 +12,7 @@
 
 #include "radio.h"
 
+#include "em_core.h"
 #include "rail.h"
 #include "rail_ieee802154.h"
 #include "rail_types.h"
@@ -32,10 +33,6 @@
 #endif//RADIO_INTERRUPT_PRIORITY
 
 #include "cmsis_os2.h"
-// Because including FreeRTOS conflicts with SiLabs RAIL
-// FIXME: use CMSIS functions
-extern void vPortEnterCritical();
-extern void vPortExitCritical();
 
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
@@ -150,7 +147,7 @@ static void * m_state_change_user;
 
 // Functions to wire into the API
 static comms_error_t radio_start (comms_layer_iface_t * iface,
-	                              comms_status_change_f * start_done, void * user);
+                                  comms_status_change_f * start_done, void * user);
 static comms_error_t radio_stop  (comms_layer_iface_t * iface,
                                   comms_status_change_f * stop_done, void * user);
 static comms_error_t radio_send  (comms_layer_iface_t * iface,
@@ -307,7 +304,7 @@ static RAIL_Handle_t radio_rail_init ()
 
 	RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
 
-  	static const RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
+	static const RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
 
 	rx_abort = 0;
 	rx_busy = 0;
@@ -340,7 +337,7 @@ static RAIL_Handle_t radio_rail_init ()
 	}
 
 	// Put the variables declared above into the appropriate structure
-  	//RAIL_TxPowerCurvesConfig_t txPowerCurvesConfig = { curves24Hp, curvesSg, curves24Lp, piecewiseSegments };
+	//RAIL_TxPowerCurvesConfig_t txPowerCurvesConfig = { curves24Hp, curvesSg, curves24Lp, piecewiseSegments };
 
 	// In the Silicon Labs implementation, the user is required to save those curves into
 	// to be referenced when the conversion functions are called
@@ -438,7 +435,7 @@ static RAIL_Handle_t radio_rail_init ()
 	}
 
 	#ifdef _SILICON_LABS_32B_SERIES_2
-   		//   - RF2G2_IO1: 0
+		//   - RF2G2_IO1: 0
 		//   - RF2G2_IO2: 1
 		static RAIL_AntennaConfig_t antennaConfig = { false }; // Zero out structure
 		#ifdef DEFAULT_ANTENNA_PATH_IO2
@@ -482,11 +479,6 @@ static RAIL_Handle_t radio_rail_init ()
 
 	RAIL_Idle(handle, RAIL_IDLE, 1);
 
-	// FIXME don't start rx
-	if (RAIL_STATUS_NO_ERROR != RAIL_StartRx(handle, m_radio_channel, NULL))
-	{
-		sys_panic("srx");
-	}
 	debug4("railstartup fifo:%d", (int)m_rx_fifo_status);
 	info1("rail txpwr: %d ddBm %d raw", (int)RAIL_GetTxPowerDbm(handle), (int)RAIL_GetTxPower(handle));
 
@@ -510,7 +502,7 @@ RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle)
 	if (status == RAIL_STATUS_INVALID_STATE)
 	{
 		// Allow failures due to multiprotocol
-    	return RAIL_STATUS_NO_ERROR;
+		return RAIL_STATUS_NO_ERROR;
 	}
 	return status;
 }
@@ -1034,24 +1026,25 @@ static void handle_radio_tx (uint32_t flags)
 	// If sending, see if it has completed
 	if (NULL != radio_msg_sending)
 	{
-		// Sending has completed ---------------------------------------------------
+		// Sending has completed -----------------------------------------------
 		if (flags & RDFLG_RAIL_SEND_DONE)
 		{
-			if (radio_tx_wait_ack)  // Alternatively we should get rx_ack_timeout
+			if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
 			{
 				debug1("ackd");
 				comms_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
 			}
 			signal_send_done(COMMS_SUCCESS);
 		}
-		// RX ack timeout handling -----------------------------------------------------
+		// Ack was not received ------------------------------------------------
 		else if (flags & RDFLG_RAIL_RXACK_TIMEOUT)
 		{
 			bool resend = false;
 
 			osTimerStop(m_send_timeout_timer);
 
-			if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg) < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
+			if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg)
+			 < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
 			{
 				resend = true;
 			}
@@ -1062,14 +1055,15 @@ static void handle_radio_tx (uint32_t flags)
 			if (resend)
 			{
 				m_csma_retries = 0;
-				osTimerStart(m_resend_timer, comms_get_timeout((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
+				osTimerStart(m_resend_timer,
+				             comms_get_timeout((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
 			}
 			else
 			{
 				signal_send_done(COMMS_ENOACK);
 			}
 		}
-		// CSMA has failed to transmit the message ---------------------------------
+		// CSMA has failed to transmit the message -----------------------------
 		else if (flags & RDFLG_RAIL_SEND_BUSY)
 		{
 			bool resend = false;
@@ -1088,16 +1082,24 @@ static void handle_radio_tx (uint32_t flags)
 			}
 			else
 			{
-				// TODO account for PacketLink
-				signal_send_done(COMMS_EBUSY);
+				if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg)
+				 < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
+				{
+					m_csma_retries = 0;
+					osTimerStart(m_resend_timer, comms_get_timeout((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
+				}
+				else
+				{
+					signal_send_done(COMMS_EBUSY);
+				}
 			}
 		}
-		// Sending has failed in some generic way
+		// Sending has failed in some generic way ------------------------------
 		else if (flags & RDFLG_RADIO_SEND_FAIL)
 		{
 			signal_send_done(COMMS_FAIL);
 		}
-		// Sending has not completed in a reasonable amount of time
+		// Sending has not completed in a reasonable amount of time ------------
 		else if (flags & RDFLG_RADIO_SEND_TIMEOUT)
 		{
 			// Check that an actual timeout has happened and this is not race
@@ -1132,12 +1134,12 @@ static void handle_radio_events (uint32_t flags)
 	{
 		uint8_t rxb __attribute__((unused));
 		uint8_t rxo __attribute__((unused));
-		vPortEnterCritical();
+		CORE_irqState_t irqState = CORE_EnterCritical();
 		rxb = rx_busy;
 		rxo = rx_overflow;
 		rx_busy = 0;
 		rx_overflow = 0;
-		vPortExitCritical();
+		CORE_ExitCritical(irqState);
 		warn1("rx b:%"PRIu8" o:%"PRIu8, rxb, rxo);
 	}
 
@@ -1146,12 +1148,12 @@ static void handle_radio_events (uint32_t flags)
 	{
 		uint8_t rxa __attribute__((unused));
 		uint8_t rxf __attribute__((unused));
-		vPortEnterCritical();
+		CORE_irqState_t irqState = CORE_EnterCritical();
 		rxa = rx_abort;
 		rxf = rx_fail;
 		rx_abort = 0;
 		rx_fail = 0;
-		vPortExitCritical();
+		CORE_ExitCritical(irqState);
 		warn1("rx a:%"PRIu8" f:%"PRIu8, rxa, rxf);
 	}
 
@@ -1159,10 +1161,10 @@ static void handle_radio_events (uint32_t flags)
 	if (rx_frame_error)
 	{
 		uint8_t rxfe __attribute__((unused));
-		vPortEnterCritical();
+		CORE_irqState_t irqState = CORE_EnterCritical();
 		rxfe = rx_frame_error;
 		rx_frame_error = 0;
-		vPortExitCritical();
+		CORE_ExitCritical(irqState);
 		warn1("rx fe:%"PRIu8, rxfe);
 	}
 
@@ -1170,10 +1172,10 @@ static void handle_radio_events (uint32_t flags)
 	if (tx_ack_sent)
 	{
 		uint8_t tas __attribute__((unused));
-		vPortEnterCritical();
+		CORE_irqState_t irqState = CORE_EnterCritical();
 		tas = tx_ack_sent;
 		tx_ack_sent = 0;
-		vPortExitCritical();
+		CORE_ExitCritical(irqState);
 		info4("tx_ack_sent:%"PRIu8, tas);
 	}
 }
