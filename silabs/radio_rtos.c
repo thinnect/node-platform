@@ -710,19 +710,16 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[8] = ((src >> 0) & 0xFF);
     buffer[9] = ((src >> 8) & 0xFF);
     buffer[10] = 0x3F;
-    buffer[11] = amid;
     if (comms_event_time_valid(iface, msg))
     {
         uint32_t evt_time, diff;
         //debug1("evt time valid");
-        buffer[11] = 0x3d;
-
-        memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
+        buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time(iface, msg);
         diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
 
-        buffer[12+count] = amid;
+        buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
         buffer[15+count] = diff>>8;
@@ -733,8 +730,8 @@ static void radio_send_message (comms_msg_t * msg)
     {
         //debug1("evt time NOT valid");
         buffer[11] = amid;
-        memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
     }
+    memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
@@ -1127,7 +1124,7 @@ static void handle_radio_tx (uint32_t flags)
 }
 
 
-static void handle_radio_events (uint32_t flags)
+static void handle_radio_events ()
 {
     // RX busy handling -----------------------------------------------------
     if (rx_busy || rx_overflow)
@@ -1309,7 +1306,7 @@ static void radio_thread (void * p)
         handle_radio_rx(flags);
 
         // Handle "other" events
-        handle_radio_events(flags);
+        handle_radio_events();
 
         if (radio_msg_sending == NULL)
         {
