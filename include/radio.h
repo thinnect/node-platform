@@ -5,7 +5,8 @@
  * @license MIT
  * @author Veiko Rütter, Raido Pahtma
  */
-#pragma once
+#ifndef RADIO_H_
+#define RADIO_H_
 
 #include <stdint.h>
 #include "mist_comm_iface.h"
@@ -19,17 +20,42 @@
 #define DEFAULT_RFPOWER_DBM 0
 #endif//DEFAULT_RFPOWER_DBM
 
-extern comms_layer_am_t radio_iface;
-extern uint16_t radio_address;
+/**
+ * Initialize the radio.
+ *
+ * @param channel Initial channel to use.
+ * @param pan_id Initial pan_id to use.
+ * @param address The 16-bit radio address.
+ *
+ * @return A pointer to a comms_layer_t radio interface or NULL on failure.
+ */
+comms_layer_t * radio_init(uint16_t channel, uint16_t pan_id, uint16_t address);
 
-comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address);
+/**
+ * Deinitialize the radio. Make sure it is stopped before attempting this!
+ * Will block until deinitialized.
+ * @param iface A comms_layer_t previously obtained with radio_init.
+ */
+void radio_deinit (comms_layer_t * iface);
 
 // Configure promiscuous mode
 void radio_set_promiscuous(bool promiscuous);
 
+/**
+ * Force radio to idle. Only supported on "basic" implementations.
+ */
 void radio_idle();
 
+/**
+ * Pull radio out of idle.
+ * Only supported on "basic" implementations.
+ */
 void radio_reenable();
+
+/**
+ * Pull radio out of idle with new parameters.
+ * Only supported on "basic" implementations.
+ */
 void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id);
 
 /**
@@ -40,15 +66,10 @@ uint32_t radio_sleep_time();
 
 /**
  * Poll the radio.
- * @return true if it is doing something.
+ * Necessary on "basic" implementations.
+ *
+ * @return true if it is doing something (outgoing messages queued).
  */
 bool radio_poll(void);
 
-// queue -----------------------------------------------------------------------
-typedef struct radio_queue_element radio_queue_element_t;
-struct radio_queue_element {
-	comms_msg_t* msg;
-	comms_send_done_f *send_done;
-	void *user;
-	radio_queue_element_t* next;
-};
+#endif//RADIO_H_
