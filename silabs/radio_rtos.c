@@ -548,7 +548,7 @@ static comms_error_t radio_start (comms_layer_iface_t * iface, comms_status_chan
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
-    if (ST_STARTING == m_state)
+    if (ST_RUNNING == m_state)
     {
         err = COMMS_ALREADY;
     }
@@ -580,7 +580,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
-    if (ST_STOPPING == m_state)
+    if (ST_OFF == m_state)
     {
         err = COMMS_ALREADY;
     }
