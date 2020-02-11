@@ -548,7 +548,7 @@ static comms_error_t radio_start (comms_layer_iface_t * iface, comms_status_chan
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
-    if (ST_STARTING == m_state)
+    if (ST_RUNNING == m_state)
     {
         err = COMMS_ALREADY;
     }
@@ -580,7 +580,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
-    if (ST_STOPPING == m_state)
+    if (ST_OFF == m_state)
     {
         err = COMMS_ALREADY;
     }
@@ -710,6 +710,10 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[8] = ((src >> 0) & 0xFF);
     buffer[9] = ((src >> 8) & 0xFF);
     buffer[10] = 0x3F;
+    // AMID handled below
+    memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
+
+    // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
         uint32_t evt_time, diff;
@@ -731,7 +735,6 @@ static void radio_send_message (comms_msg_t * msg)
         //debug1("evt time NOT valid");
         buffer[11] = amid;
     }
-    memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
