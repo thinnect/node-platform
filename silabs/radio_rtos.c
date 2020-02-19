@@ -1008,6 +1008,11 @@ static void handle_radio_rx()
                                 rts,
                                 packetDetails.rssi, lqi, plen);
 
+                        debug2("Rx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" rssi:%"PRIi8"",
+                                buffer[12],
+                                source, dest,
+                                packetDetails.rssi);
+
                         comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
                     }
                     else warn1("rx bad pl %02"PRIX8" %"PRIu8, amid, plen);
