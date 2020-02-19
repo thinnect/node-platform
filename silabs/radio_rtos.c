@@ -1264,14 +1264,18 @@ static void radio_thread (void * p)
 
         while(osFlagsErrorTimeout == flags)
         {
+            uint32_t wait = osWaitForever;
             if (running) // must prevent sleep, but permit thread switches if no flags
             {
-                flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, configEXPECTED_IDLE_TIME_BEFORE_SLEEP - 1);
+                #if defined(configUSE_TICKLESS_IDLE) && (configUSE_TICKLESS_IDLE == 1)
+                    #ifndef configEXPECTED_IDLE_TIME_BEFORE_SLEEP)
+                        wait = 1; // 1 should be enough to prevent sleep,
+                    #else         // but wait more, if possible
+                        wait = configEXPECTED_IDLE_TIME_BEFORE_SLEEP - 1;
+                    #endif
+                #endif
             }
-            else // wait forever and let kernel sleep
-            {
-                flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
-            }
+            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
         }
 
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
