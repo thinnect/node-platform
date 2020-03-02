@@ -61,7 +61,7 @@ extern const char * g_panic_str;
         g_panic_file = moduulROM;                           \
         g_panic_line = __LINE__;                            \
         g_panic_str = strROM;                               \
-         \
+        sys_panic_action();                                 \
 })
 
 #endif//SYS_PANIC_H_
