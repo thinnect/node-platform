@@ -129,6 +129,12 @@ static uint32_t m_sleep_time;
 // When the radio was stopped last
 static uint32_t m_stop_timestamp;
 
+// Packets actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_packets;
+
+// Bytes actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_bytes;
+
 // Internal RAIL initialization procedures
 static RAIL_Handle_t radio_rail_init();
 
@@ -229,6 +235,9 @@ comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
 
     m_sleep_time = 0;
     m_stop_timestamp = 0;
+
+    m_transmitted_packets = 0;
+    m_transmitted_bytes = 0;
 
     radio_msg_sending = NULL;
     radio_msg_queue_head = NULL;
@@ -513,6 +522,15 @@ uint32_t radio_sleep_time()
     return m_sleep_time;
 }
 
+uint32_t radio_tx_packets()
+{
+    return m_transmitted_packets;
+}
+
+uint32_t radio_tx_bytes()
+{
+    return m_transmitted_bytes;
+}
 
 void radio_idle()
 {
@@ -1021,6 +1039,16 @@ static void handle_radio_rx()
 }
 
 
+static void update_tx_stats(comms_msg_t * msg)
+{
+    m_transmitted_packets++; // Packet was actually sent out
+    m_transmitted_bytes += (14 // 12 bytes header + 2 bytes CRC
+        + comms_get_payload_length((comms_layer_t *)&m_radio_iface, msg)
+        + (comms_event_time_valid((comms_layer_t *)&m_radio_iface, msg) ? 5 : 0)
+        + 2);
+}
+
+
 static void handle_radio_tx (uint32_t flags)
 {
     // If sending, see if it has completed
@@ -1029,6 +1057,8 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has completed -----------------------------------------------
         if (flags & RDFLG_RAIL_SEND_DONE)
         {
+            update_tx_stats(radio_msg_sending->msg);
+
             if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
             {
                 debug1("ackd");
@@ -1042,6 +1072,8 @@ static void handle_radio_tx (uint32_t flags)
             bool resend = false;
 
             osTimerStop(m_send_timeout_timer);
+
+            update_tx_stats(radio_msg_sending->msg);
 
             if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg)
              < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))

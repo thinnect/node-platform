@@ -65,6 +65,18 @@ void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id);
 uint32_t radio_sleep_time();
 
 /**
+ * Radio statistics - count number of transmitted packets (including retries).
+ * @return number of transmitted packets.
+ */
+uint32_t radio_tx_packets();
+
+/**
+ * Radio statistics - roughly estimate the number of transmitted bytes.
+ * @return Transmitted bytes.
+ */
+uint32_t radio_tx_bytes();
+
+/**
  * Poll the radio.
  * Necessary on "basic" implementations.
  *
