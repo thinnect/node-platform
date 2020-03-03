@@ -842,10 +842,10 @@ static void signal_send_done (comms_error_t err)
 
     if (qtime > 20)
     {
-        warn1("slow tx %"PRIu32, qtime);
+        warn3("slow tx %"PRIu32, qtime);
     }
 
-    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN1,
+    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
            msgp, err,
            qtime,
@@ -937,7 +937,7 @@ static void handle_radio_rx()
 
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
                 {
-                    warn1("same seqNum:%02"PRIX8, buffer[3]);
+                    warn3("same seqNum:%02"PRIX8, buffer[3]);
                 }
                 else if ((packetInfo.packetBytes >= 12)
                        &&(buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
@@ -1054,7 +1054,7 @@ static void handle_radio_tx (uint32_t flags)
                 resend = true;
             }
 
-            logger(resend?LOG_DEBUG1:LOG_WARN1, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
+            logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
                    comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
                    comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
             if (resend)
