@@ -39,7 +39,7 @@ int32_t lmt01_read_temperature()
 		lmt01_prs_channel = PRS_GetFreeChannel(prsTypeAsync);
 	}
 
-	GPIO_PinModeSet(gpioPortA, 6, gpioModePushPull, 0);
+	GPIO_PinModeSet(LMT01_ONESHOT_TIMER_PORT, LMT01_ONESHOT_TIMER_PIN, gpioModePushPull, 0);
 
 	lmt01_acmp_init();
 	lmt01_counter_timer_init();
