@@ -1240,21 +1240,26 @@ static void start_radio_now ()
 }
 
 
-static uint32_t rail_packet_age(RAIL_RxPacketHandle_t packetHandle)
+static uint32_t rail_packet_age(RAIL_RxPacketHandle_t handle)
 {
-    RAIL_RxPacketDetails_t packetDetails = {0};
-    RAIL_Status_t status = RAIL_GetRxPacketDetailsAlt(m_rail_handle, packetHandle, &packetDetails);
-    if (status == RAIL_STATUS_NO_ERROR)
+    RAIL_RxPacketInfo_t packetInfo = {0};
+    RAIL_RxPacketHandle_t ph = RAIL_GetRxPacketInfo(m_rail_handle, handle, &packetInfo);
+    if (ph != RAIL_RX_PACKET_HANDLE_INVALID)
     {
-        RAIL_RxPacketDetails_t timeDetails = packetDetails;
-        if (RAIL_PACKET_TIME_INVALID != timeDetails.timeReceived.timePosition)
+        RAIL_RxPacketDetails_t packetDetails = {0};
+        RAIL_Status_t status = RAIL_GetRxPacketDetailsAlt(m_rail_handle, ph, &packetDetails);
+        if (status == RAIL_STATUS_NO_ERROR)
         {
-            // Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
-            timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
-            // Want the earliest timestamp possible
-            if (RAIL_STATUS_NO_ERROR == RAIL_GetRxTimePreambleStartAlt(m_rail_handle, &timeDetails))
+            RAIL_RxPacketDetails_t timeDetails = packetDetails;
+            if (RAIL_PACKET_TIME_INVALID != timeDetails.timeReceived.timePosition)
             {
-                return RAIL_GetTime() - timeDetails.timeReceived.packetTime;
+                // Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
+                timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
+                // Want the earliest timestamp possible
+                if (RAIL_STATUS_NO_ERROR == RAIL_GetRxTimePreambleStartAlt(m_rail_handle, &timeDetails))
+                {
+                    return RAIL_GetTime() - timeDetails.timeReceived.packetTime;
+                }
             }
         }
     }
