@@ -155,8 +155,8 @@ struct serial_protocol
     uint8_t rx_seq_num;
 
     osMutexId_t mutex;
-    osTimerId_t sent_timer;
-    osTimerId_t send_timer;
+    osThreadId_t thread;
+    osTimerId_t timeout_timer;
 
     serial_dispatcher_t * p_active_dispatcher;
     serial_dispatcher_t * p_dispatchers;

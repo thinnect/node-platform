@@ -23,6 +23,27 @@
 
 static void serial_protocol_sent_cb(void* argument);
 static void serial_protocol_send_cb(void* argument);
+static void serial_protocol_timeout(void* argument)
+{
+    osThreadFlagsSet((osThreadId_t*)argument, 2); // Sent
+}
+
+static void sp_thread_loop(void * argument)
+{
+    serial_protocol_t * sp = (serial_protocol_t*)argument;
+    for(;;)
+    {
+        uint32_t flags = osThreadFlagsWait(3, osFlagsWaitAny, osWaitForever);
+        if(flags & 1)
+        {
+            serial_protocol_send_cb(argument);
+        }
+        if(flags & 2)
+        {
+            serial_protocol_sent_cb(argument);
+        }
+    }
+}
 
 bool serial_protocol_init (serial_protocol_t * sp,
                            raw_serial_send_f * sendf,
@@ -37,9 +58,11 @@ bool serial_protocol_init (serial_protocol_t * sp,
     sp->p_dispatchers = NULL;
     sp->f_default_receiver = dflt_rcvr;
 
+    const osThreadAttr_t thread_attr = { .name = "sp" };
+
     sp->mutex = osMutexNew(NULL);
-    sp->sent_timer = osTimerNew(&serial_protocol_sent_cb, osTimerOnce, sp, NULL);
-    sp->send_timer = osTimerNew(&serial_protocol_send_cb, osTimerOnce, sp, NULL);
+    sp->thread = osThreadNew(sp_thread_loop, sp, &thread_attr);
+    sp->timeout_timer = osTimerNew(&serial_protocol_timeout, osTimerOnce, sp->thread, NULL);
 
     return true;
 }
@@ -133,7 +156,15 @@ static void serial_protocol_send_cb(void* argument)
 {
     serial_protocol_t * sp = (serial_protocol_t *)argument;
 
-    while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
+    printk("sendcb\n");
+
+    osStatus_t r;
+    while(osOK != (r = osMutexAcquire(sp->mutex, 10000))) {
+        printk("w %p %d\n", sp->mutex, (int)r);
+        osDelay(10000);
+    }
+
+    printk("aqd\n");
 
     if(NULL != sp->p_active_dispatcher)
     {
@@ -165,18 +196,22 @@ static void serial_protocol_send_cb(void* argument)
                 packet->protocol = SERIAL_PROTOCOL_ACKPACKET;
                 packet->dispatch = dp->dispatch;
                 packet->seq_num = ++(sp->tx_seq_num);
+                printk("mc\n");
                 memcpy(packet->payload, dp->data, dp->data_length);
 
+                printk("cpd\n");
                 dp->send_time = osKernelGetTickCount();
                 dp->acked = false;
+                printk("sendf\n");
                 sp->sendf(sp->send_buffer, length);
+                printk("sendfd\n");
             }
             else
             {
                 err1("s"); // Packet dropped
             }
 
-            osTimerStart(sp->sent_timer, osKernelGetTickFreq()*SERIAL_PROTOCOL_ACK_TIMEOUT_MS/1000);
+            osTimerStart(sp->timeout_timer, osKernelGetTickFreq()*SERIAL_PROTOCOL_ACK_TIMEOUT_MS/1000);
         }
         else
         {
@@ -186,18 +221,22 @@ static void serial_protocol_send_cb(void* argument)
                 serial_protocol_packet_t* packet = (serial_protocol_packet_t*)(sp->send_buffer);
                 packet->protocol = SERIAL_PROTOCOL_PACKET;
                 packet->dispatch = dp->dispatch;
+                printk("mc\n");
                 memcpy(packet->payload, dp->data, dp->data_length);
+                printk("mcd\n");
 
                 dp->send_time = osKernelGetTickCount();
                 dp->acked = false;
+                printk("sendf\n");
                 sp->sendf(sp->send_buffer, length);
+                printk("sendfd\n");
             }
             else
             {
                 err1("s"); // Packet dropped
             }
 
-            osTimerStart(sp->sent_timer, 1UL); // Minimal possible delay
+            osThreadFlagsSet(sp->thread, 2);
         }
     }
     else
@@ -211,6 +250,8 @@ static void serial_protocol_send_cb(void* argument)
 static void serial_protocol_sent_cb(void* argument)
 {
     serial_protocol_t * sp = (serial_protocol_t *)argument;
+
+    printk("sentf\n");
 
     while(osOK != osMutexAcquire(sp->mutex, osWaitForever));
 
@@ -229,7 +270,7 @@ static void serial_protocol_sent_cb(void* argument)
                 else
                 {
                     uint32_t remaining = (osKernelGetTickFreq()*(SERIAL_PROTOCOL_ACK_TIMEOUT_MS-passed)/1000);
-                    osTimerStart(sp->sent_timer, remaining+1UL);
+                    osTimerStart(sp->timeout_timer, remaining+1UL);
                     debug1("wait %"PRIu32, remaining);
                     osMutexRelease(sp->mutex);
                     return;
@@ -266,7 +307,7 @@ static void serial_protocol_sent_cb(void* argument)
         osMutexRelease(sp->mutex);
 
         // Check for pending messages
-        osTimerStart(sp->send_timer, 1UL);
+        osThreadFlagsSet(sp->thread, 1);
     }
     else
     {
@@ -298,7 +339,7 @@ void serial_protocol_receive (serial_protocol_t * sp, const uint8_t data[], uint
                         {
                             debug1("ack %02X", (unsigned int)ack->seq_num);
                             sp->p_active_dispatcher->acked = true;
-                            osTimerStart(sp->sent_timer, 1UL); // Minimal possible delay
+                            osThreadFlagsSet(sp->thread, 2);
                         }
                         else
                         {
@@ -390,7 +431,7 @@ bool serial_protocol_send (serial_dispatcher_t* dispatcher, const uint8_t data[]
         dispatcher->data = data;
         dispatcher->data_length = length;
         dispatcher->ack = ack;
-        osTimerStart(sp->send_timer, 1UL); // Defer, 0 not possible
+        osThreadFlagsSet(sp->thread, 1); // Defer
     }
 
     osMutexRelease(sp->mutex);

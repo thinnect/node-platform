@@ -40,12 +40,13 @@ static comms_error_t serial_activemessage_send (comms_layer_iface_t * iface,
                                                 comms_send_done_f * send_done, void * user);
 static bool serial_am_receive(uint8_t dspch, const uint8_t data[], uint8_t length, void* user);
 static void serial_am_senddone(uint8_t dspch, const uint8_t data[], uint8_t length, bool acked, void* user);
-static void serial_am_timer_cb(void * argument);
+static void serial_am_thread(void * argument);
 
 comms_layer_t* serial_activemessage_init (serial_activemessage_t* sam, serial_protocol_t * spr)
 {
+	const osThreadAttr_t thread_attr = { .name = "sam" };
 	sam->mutex = osMutexNew(NULL);
-	sam->timer = osTimerNew(&serial_am_timer_cb, osTimerOnce, sam, NULL);
+	sam->thread = osThreadNew(serial_am_thread, sam, &thread_attr);
 
 	// Initialize send queueing system
 	sam->send_busy = false;
@@ -79,15 +80,17 @@ bool serial_activemessage_deinit (serial_activemessage_t* sam)
 {
 	while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
 
+/*
 	if ((1 == osTimerIsRunning(sam->timer))
 	  ||(NULL != sam->sending))
 	{
 		osMutexRelease(sam->mutex);
 		return false;
 	}
-
+*/
 	serial_protocol_remove_dispatcher(sam->protocol, &(sam->dispatcher));
-	osTimerDelete(sam->timer);
+//	osTimerDelete(sam->timer);
+	// TODO kill the thread
 
 	osMutexRelease(sam->mutex);
 	osMutexDelete(sam->mutex);
@@ -100,6 +103,7 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 	serial_activemessage_t * sam = (serial_activemessage_t*)user;
 	comms_layer_t * lyr = (comms_layer_t*)sam;
 	debugb1("%p data", data, length, sam);
+	printk("sam data\n");
 
 	if (sizeof(tos_serial_message_t) > length)
 	{
@@ -144,6 +148,7 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 		comms_am_get_destination(lyr, &msg),
 		comms_get_packet_type(lyr, &msg));
 
+	printk("sam deliver\n");
 	comms_deliver(lyr, &msg);
 
     osMutexRelease(sam->mutex);
@@ -217,70 +222,75 @@ static void serial_am_senddone(uint8_t dispatch, const uint8_t data[], uint8_t l
 	while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
 	sam->send_busy = false;
 	osMutexRelease(sam->mutex);
-	osTimerStart(sam->timer, 1UL);
+	osThreadFlagsSet(sam->thread, 1); // Send
 }
 
-static void serial_am_timer_cb(void * argument)
+static void serial_am_thread(void * argument)
 {
 	serial_activemessage_t * sam = (serial_activemessage_t*)argument;
 	comms_layer_t * lyr = (comms_layer_t*)sam;
 
-	while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
-	if(sam->send_busy)
+	for(;;)
 	{
-		debug1("bsy"); // Must wait for last send to complete
-		osMutexRelease(sam->mutex);
-		return;
-	}
+		osThreadFlagsWait(1, osFlagsWaitAny, osWaitForever);
 
-	if (NULL != sam->sending)
-	{
-		// Return the queue element to the free queue
-		sam->sending->next = sam->free_queue;
-		sam->free_queue = sam->sending;
-		sam->sending = NULL;
-	}
-
-	if (NULL != sam->send_queue)
-	{
-		sam->sending = sam->send_queue;
-		sam->send_queue = sam->send_queue->next;
-		sam->send_busy = true;
-	}
-	osMutexRelease(sam->mutex);
-
-	if (NULL != sam->sending)
-	{
-		uint16_t length = prepare_sp_message(sam->send_buffer, sizeof(sam->send_buffer), sam->sending->msg, lyr);
-		if(length > 0)
+		while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
+		if(sam->send_busy)
 		{
-			if(true == serial_protocol_send(&(sam->dispatcher), sam->send_buffer, length, false))
+			debug1("bsy"); // Must wait for last send to complete
+			osMutexRelease(sam->mutex);
+			continue;
+		}
+
+		if (NULL != sam->sending)
+		{
+			// Return the queue element to the free queue
+			sam->sending->next = sam->free_queue;
+			sam->free_queue = sam->sending;
+			sam->sending = NULL;
+		}
+
+		if (NULL != sam->send_queue)
+		{
+			sam->sending = sam->send_queue;
+			sam->send_queue = sam->send_queue->next;
+			sam->send_busy = true;
+		}
+		osMutexRelease(sam->mutex);
+
+		if (NULL != sam->sending)
+		{
+			uint16_t length = prepare_sp_message(sam->send_buffer, sizeof(sam->send_buffer), sam->sending->msg, lyr);
+			if(length > 0)
 			{
-				debug1("snd %p %p %p", sam->sending, sam->send_queue, sam->free_queue);
-				return;
+				if(true == serial_protocol_send(&(sam->dispatcher), sam->send_buffer, length, false))
+				{
+					debug1("snd %p %p %p", sam->sending, sam->send_queue, sam->free_queue);
+					continue;
+				}
+				else
+				{
+					err1("busy?");
+				}
 			}
 			else
 			{
-				err1("busy?");
+				err1("prep");
 			}
+
+			// Something bad has happened, return message to user with error
+			sam->sending->send_done(lyr, sam->sending->msg, COMMS_EINVAL, sam->sending->user);
+			sam->sending->msg = NULL; // Pointer has been returned
+
+			while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
+			sam->send_busy = false;
+			osMutexRelease(sam->mutex);
+			osThreadFlagsSet(sam->thread, 1); // Send
 		}
 		else
 		{
-			err1("prep");
+			debug1("idle");
 		}
-
-		// Something bad has happened, return message to user with error
-		sam->sending->send_done(lyr, sam->sending->msg, COMMS_EINVAL, sam->sending->user);
-		sam->sending->msg = NULL; // Pointer has been returned
-
-		while (osOK != osMutexAcquire(sam->mutex, osWaitForever));
-		sam->send_busy = false;
-		osMutexRelease(sam->mutex);
-		osTimerStart(sam->timer, 1L); // Try next message
-	}
-	else
-	{
-		debug1("idle");
 	}
 }
 
@@ -310,7 +320,7 @@ static comms_error_t serial_activemessage_send (comms_layer_iface_t * iface,
 		(*qe)->next = NULL;
 
 		debug1("q %p %p", sam->send_queue, sam->free_queue);
-		osTimerStart(sam->timer, 1UL);
+		osThreadFlagsSet(sam->thread, 1); // Send
 	}
 	else // Queue full
 	{

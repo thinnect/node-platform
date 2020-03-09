@@ -56,7 +56,7 @@ struct sam_queue_element
 };
 
 #ifndef SERIAL_ACTIVEMESSAGE_QUEUE_LENGTH
-#define SERIAL_ACTIVEMESSAGE_QUEUE_LENGTH 3
+#define SERIAL_ACTIVEMESSAGE_QUEUE_LENGTH 1
 #endif//SERIAL_ACTIVEMESSAGE_QUEUE_LENGTH
 
 #ifndef SERIAL_ACTIVEMESSAGE_MAX_MESSAGE_LENGTH
@@ -70,7 +70,7 @@ struct serial_activemessage
 	serial_protocol_t* protocol;
 
 	osMutexId_t mutex;
-	osTimerId_t timer;
+	osThreadId_t thread;
 
 	sam_queue_element_t * sending;
 	sam_queue_element_t * send_queue;
