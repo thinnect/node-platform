@@ -42,11 +42,13 @@ static bool serial_am_receive(uint8_t dspch, const uint8_t data[], uint8_t lengt
 static void serial_am_senddone(uint8_t dspch, const uint8_t data[], uint8_t length, bool acked, void* user);
 static void serial_am_thread(void * argument);
 
-comms_layer_t* serial_activemessage_init (serial_activemessage_t* sam, serial_protocol_t * spr)
+comms_layer_t* serial_activemessage_init (serial_activemessage_t* sam, serial_protocol_t * spr, uint16_t pan_id, uint16_t address)
 {
 	const osThreadAttr_t thread_attr = { .name = "sam" };
 	sam->mutex = osMutexNew(NULL);
 	sam->thread = osThreadNew(serial_am_thread, sam, &thread_attr);
+
+	sam->group_id = pan_id;
 
 	// Initialize send queueing system
 	sam->send_busy = false;
@@ -68,9 +70,8 @@ comms_layer_t* serial_activemessage_init (serial_activemessage_t* sam, serial_pr
 		                           sam);
 
 	// Set up the mist-comm layer
-	// TODO should we be passing 0 as default address?
 	// TODO start-stop handlers
-	comms_am_create((comms_layer_t *)sam, 0, &serial_activemessage_send, NULL, NULL);
+	comms_am_create((comms_layer_t *)sam, address, &serial_activemessage_send, NULL, NULL);
 
 	// serial_activemessage_t is a valid comms_layer_t
 	return (comms_layer_t *)sam;
@@ -140,10 +141,9 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 	comms_am_set_destination(lyr, &msg, ntoh16(m->destination));
 	comms_am_set_source(lyr, &msg, ntoh16(m->source));
 
-	 // TODO DEFAULT_PAN_ID variable
 	debugb1("rx {%02X}%04"PRIX16"->%04"PRIX16"[%02X]",
 		payload, comms_get_payload_length(lyr, &msg),
-		DEFAULT_PAN_ID,
+		(int)m->group_id, // TODO grop variable stored in the packet
 		comms_am_get_source(lyr, &msg),
 		comms_am_get_destination(lyr, &msg),
 		comms_get_packet_type(lyr, &msg));
@@ -164,8 +164,9 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 * @param lyr - the layer to use for interpreting the message
 * @return length of the prepared message or 0 for errors
 */
-static uint16_t prepare_sp_message(uint8_t buffer[], uint16_t length, comms_msg_t * msg, comms_layer_t * lyr)
+static uint16_t prepare_sp_message(uint8_t buffer[], uint16_t length, comms_msg_t * msg, serial_activemessage_t * sam)
 {
+	comms_layer_t * lyr = (comms_layer_t*)sam;
 	uint8_t plen = comms_get_payload_length(lyr, msg);
 
 	if(plen + sizeof(tos_serial_message_t) <= length)
