@@ -20,7 +20,7 @@
 #include "loglevels.h"
 #define __MODUUL__ "sam"
 #define __LOG_LEVEL__ (LOG_LEVEL_serial_activemessage & BASE_LOG_LEVEL)
-#include "log.h"
+#include "lll_log.h"
 
 #pragma pack(push, 1)
 typedef struct tos_serial_message
@@ -104,7 +104,6 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 	serial_activemessage_t * sam = (serial_activemessage_t*)user;
 	comms_layer_t * lyr = (comms_layer_t*)sam;
 	debugb1("%p data", data, length, sam);
-	printk("sam data\n");
 
 	if (sizeof(tos_serial_message_t) > length)
 	{
@@ -141,14 +140,14 @@ static bool serial_am_receive(uint8_t dispatch, const uint8_t data[], uint8_t le
 	comms_am_set_destination(lyr, &msg, ntoh16(m->destination));
 	comms_am_set_source(lyr, &msg, ntoh16(m->source));
 
+	// TODO grop variable stored in the packet
 	debugb1("rx {%02X}%04"PRIX16"->%04"PRIX16"[%02X]",
 		payload, comms_get_payload_length(lyr, &msg),
-		(int)m->group_id, // TODO grop variable stored in the packet
+		(int)m->group,
 		comms_am_get_source(lyr, &msg),
 		comms_am_get_destination(lyr, &msg),
 		comms_get_packet_type(lyr, &msg));
 
-	printk("sam deliver\n");
 	comms_deliver(lyr, &msg);
 
     osMutexRelease(sam->mutex);
@@ -178,7 +177,7 @@ static uint16_t prepare_sp_message(uint8_t buffer[], uint16_t length, comms_msg_
 
 			m->destination = hton16(comms_am_get_destination(lyr, msg));
 			m->source = hton16(comms_am_get_source(lyr, msg));
-			m->group = DEFAULT_PAN_ID; // TODO variable
+			m->group = sam->group_id; // TODO variable
 			m->amid = comms_get_packet_type(lyr, msg);
 			m->payload_length = plen;
 			memcpy(m->payload, payload, plen);
@@ -261,7 +260,7 @@ static void serial_am_thread(void * argument)
 
 		if (NULL != sam->sending)
 		{
-			uint16_t length = prepare_sp_message(sam->send_buffer, sizeof(sam->send_buffer), sam->sending->msg, lyr);
+			uint16_t length = prepare_sp_message(sam->send_buffer, sizeof(sam->send_buffer), sam->sending->msg, sam);
 			if(length > 0)
 			{
 				if(true == serial_protocol_send(&(sam->dispatcher), sam->send_buffer, length, false))

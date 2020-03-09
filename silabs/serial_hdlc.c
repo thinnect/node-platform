@@ -31,7 +31,7 @@
 #include "loglevels.h"
 #define __MODUUL__ "serh"
 #define __LOG_LEVEL__ (LOG_LEVEL_serial_hdlc & BASE_LOG_LEVEL)
-#include "log.h"
+#include "lll_log.h"
 
 #define HDLC_RX_QUEUE_LENGTH 5
 
