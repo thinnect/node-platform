@@ -31,7 +31,8 @@ typedef struct serial_activemessage serial_activemessage_t;
  *         or NULL for failure.
  */
 comms_layer_t* serial_activemessage_init (serial_activemessage_t * sam,
-                                          serial_protocol_t * spr);
+                                          serial_protocol_t * spr,
+                                          uint16_t pan_id, uint16_t address);
 
 /**
  * Deinitialize the SerialActiveMessage layer. The memory used by the instance
@@ -68,6 +69,8 @@ struct serial_activemessage
 	comms_layer_am_t base;
 	serial_dispatcher_t dispatcher;
 	serial_protocol_t* protocol;
+
+	uint16_t group_id; // PAN id
 
 	osMutexId_t mutex;
 	osTimerId_t timer;
