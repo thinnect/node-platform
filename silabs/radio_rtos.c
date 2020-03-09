@@ -80,6 +80,7 @@ struct radio_queue_element
 #define RDFLG_RAIL_RX_FAIL        (1 << 16)
 #define RDFLG_RAIL_TXACK_SENT     (1 << 17)
 #define RDFLG_RAIL_RXACK_TIMEOUT  (1 << 18)
+#define RDFLG_RAIL_RX_MORE        (1 << 20)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -903,7 +904,7 @@ static void handle_radio_rx()
 {
     // RX processing -----------------------------------------------------------
     RAIL_RxPacketHandle_t rxh;
-    while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
+    if (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
         RAIL_RxPacketInfo_t packetInfo = {0};
         RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
@@ -1040,6 +1041,10 @@ static void handle_radio_rx()
             else err1("rxd");
         }
         else err1("rxi");
+
+        // There might be more packets in the queue, but don't let RX swamp the
+        // radio - defer it to the next run through the loop
+        osThreadFlagsSet(m_radio_thread_id, RDFLG_RAIL_RX_MORE);
     }
 }
 
