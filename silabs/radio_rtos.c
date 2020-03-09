@@ -1240,6 +1240,28 @@ static void start_radio_now ()
 }
 
 
+static uint32_t rail_packet_age(RAIL_RxPacketHandle_t packetHandle)
+{
+    RAIL_RxPacketDetails_t packetDetails = {0};
+    RAIL_Status_t status = RAIL_GetRxPacketDetailsAlt(m_rail_handle, packetHandle, &packetDetails);
+    if (status == RAIL_STATUS_NO_ERROR)
+    {
+        RAIL_RxPacketDetails_t timeDetails = packetDetails;
+        if (RAIL_PACKET_TIME_INVALID != timeDetails.timeReceived.timePosition)
+        {
+            // Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
+            timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
+            // Want the earliest timestamp possible
+            if (RAIL_STATUS_NO_ERROR == RAIL_GetRxTimePreambleStartAlt(m_rail_handle, &timeDetails))
+            {
+                return RAIL_GetTime() - timeDetails.timeReceived.packetTime;
+            }
+        }
+    }
+    return UINT32_MAX;
+}
+
+
 static void stop_radio_now ()
 {
     info2("stop");
@@ -1263,7 +1285,7 @@ static void stop_radio_now ()
     RAIL_RxPacketHandle_t rxh;
     while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
-        warn2("rm rxmsg");
+        warn2("rm rxmsg age:%"PRIu32"us", rail_packet_age(rxh));
         RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
         if (rst != RAIL_STATUS_NO_ERROR)
         {
