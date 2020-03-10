@@ -20,6 +20,16 @@ void RETARGET_I2CInit();
 void RETARGET_I2CDeinit();
 
 /**
+ * Acquire the mutex for a transaction. Blocking function.
+ */
+void RETARGET_I2CTransactionLock();
+
+/**
+ * Release the mutex.
+ */
+void RETARGET_I2CTransactionUnlock();
+
+/**
  * Write 1 byte (regAddr) to set register and read 'count' bytes of data in a
  * single transaction.
  *

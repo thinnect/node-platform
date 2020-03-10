@@ -8,16 +8,34 @@
 
 #include "retargetspi.h"
 #include "retargetspiconfig.h"
+#include "platform_mutex.h"
 
 #include <stdio.h>
 #include "em_cmu.h"
 #include "em_gpio.h"
 #include "em_usart.h"
 
+static platform_mutex_t spi_mutex, spi_transaction_mutex_cs0;
+#ifdef RETARGET_SPI_CS1_PORT
+static platform_mutex_t spi_transaction_mutex_cs1;
+#endif
+#ifdef RETARGET_SPI_CS2_PORT
+static platform_mutex_t spi_transaction_mutex_cs2;
+#endif
+
 void RETARGET_SpiInit() {
 	USART_InitSync_TypeDef init = USART_INITSYNC_DEFAULT;
 	init.msbf = true;
 	init.enable = usartDisable;
+
+	platform_mutex_init("spi", spi_mutex);
+	platform_mutex_init("spi_cs0", spi_transaction_mutex_cs0);
+#ifdef RETARGET_SPI_CS1_PORT
+	platform_mutex_init("spi_cs1", spi_transaction_mutex_cs1);
+#endif
+#ifdef RETARGET_SPI_CS2_PORT
+	platform_mutex_init("spi_cs2", spi_transaction_mutex_cs2);
+#endif
 
 	CMU_ClockEnable(cmuClock_GPIO, true);
 	GPIO_PinModeSet(RETARGET_SPI_CS_PORT, RETARGET_SPI_CS_PIN, gpioModePushPull, 1);
@@ -94,19 +112,62 @@ void spi_cs(int cs, uint8_t active) {
 #endif
 }
 
+void RETARGET_SpiTransactionLock(int cs)
+{
+	if(cs == 0)
+	{
+		platform_mutex_acquire(spi_transaction_mutex_cs0);
+	}
+#ifdef RETARGET_SPI_CS1_PORT
+	if(cs == 1)
+	{
+		platform_mutex_acquire(spi_transaction_mutex_cs1);
+	}
+#endif
+#ifdef RETARGET_SPI_CS2_PORT
+	if(cs == 2)
+	{
+		platform_mutex_acquire(spi_transaction_mutex_cs2);
+	}
+#endif
+}
+
+void RETARGET_SpiTransactionUnlock(int cs)
+{
+	if(cs == 0)
+	{
+		platform_mutex_release(spi_transaction_mutex_cs0);
+	}
+#ifdef RETARGET_SPI_CS1_PORT
+	if(cs == 1)
+	{
+		platform_mutex_release(spi_transaction_mutex_cs1);
+	}
+#endif
+#ifdef RETARGET_SPI_CS2_PORT
+	if(cs == 2)
+	{
+		platform_mutex_release(spi_transaction_mutex_cs2);
+	}
+#endif
+}
+
 int RETARGET_SpiTransfer(int cs, const void *out, void *in, int32_t len) {
 	if(len < 1)return(len);
+	platform_mutex_acquire(spi_mutex);
 	spi_cs(cs, 1);
 	for(int32_t i = 0; i < len; i++) {
 		((uint8_t *)in)[i] = USART_SpiTransfer(RETARGET_SPI_UART, ((uint8_t *)out)[i]);
 	}
 	spi_cs(cs, 0);
+	platform_mutex_release(spi_mutex);
 	return 0;
 }
 
 int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in, int32_t in_len) {
 	int32_t i;
-	if((out_len < 0) || (in_len < 0))return(-1);
+	if((out_len < 0) || (in_len < 0))return (-1);
+	platform_mutex_acquire(spi_mutex);
 	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
 	spi_cs(cs, 1);
 	if(out_len) {
@@ -120,5 +181,6 @@ int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in,
 		((uint8_t *)in)[i] = USART_SpiTransfer(RETARGET_SPI_UART, 0xFF);
 	}
 	spi_cs(cs, 0);
-	return(0);
+	platform_mutex_release(spi_mutex);
+	return 0;
 }
