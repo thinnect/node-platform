@@ -15,6 +15,8 @@
 #include "em_acmp.h"
 #include "em_prs.h"
 
+#ifdef _SILICON_LABS_32B_SERIES_2
+
 #define ___LMT01_STRINGIFY_PRE2(__p1, __p2)             __p1 ## __p2
 #define ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3)       __p1 ## __p2 ## __p3
 #define ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4) __p1 ## __p2 ## __p3 ## __p4
@@ -223,4 +225,16 @@ static bool lmt01_oneshot_timer_active()
 {
 	return (!(TIMER_IntGet(LMT01_ONESHOT_TIMER_DEV) & TIMER_IF_OF));
 }
+
+#else // _SILICON_LABS_32B_SERIES_2
+#warning "LMT01 driver is not supported on series 1."
+void lmt01_init()
+{
+}
+
+int32_t lmt01_read_temperature()
+{
+	return -500;
+}
+#endif // _SILICON_LABS_32B_SERIES_2
 
