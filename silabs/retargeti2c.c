@@ -8,6 +8,7 @@
 
 #include "retargeti2c.h"
 #include "retargeti2cconfig.h"
+#include "platform_mutex.h"
 
 #include "em_gpio.h"
 #include "em_cmu.h"
@@ -18,10 +19,15 @@
 #define __LOG_LEVEL__ (LOG_LEVEL_retargeti2c & BASE_LOG_LEVEL)
 #include "log.h"
 
+static platform_mutex_t i2c_mutex;
+static platform_mutex_t i2c_transaction_mutex;
 
 void RETARGET_I2CInit() {
 	I2C_Init_TypeDef i2cInit = I2C_INIT_DEFAULT;
 	i2cInit.freq = I2C_FREQ_FAST_MAX;
+
+	platform_mutex_init("i2c", i2c_mutex);
+	platform_mutex_init("i2c_ta", i2c_transaction_mutex);
 
 	CMU_ClockEnable(cmuClock_GPIO, true);
 	CMU_ClockEnable(RETARGET_I2C_CLOCK, true);
@@ -65,6 +71,16 @@ void RETARGET_I2CDeinit() {
 	#endif
 }
 
+void RETARGET_I2CTransactionLock()
+{
+	platform_mutex_acquire(i2c_transaction_mutex);
+}
+
+void RETARGET_I2CTransactionUnlock()
+{
+	platform_mutex_release(i2c_transaction_mutex);
+}
+
 int8_t RETARGET_I2CRead(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uint16_t count) {
 	I2C_TransferSeq_TypeDef seq;
 	I2C_TransferReturn_TypeDef ret;
@@ -78,10 +94,12 @@ int8_t RETARGET_I2CRead(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uint
 	seq.buf[1].len  = count;
 	seq.buf[1].data = regData;
 
+	platform_mutex_acquire(i2c_mutex);
 	ret = I2C_TransferInit(RETARGET_I2C_DEV, &seq);
 	while (ret == i2cTransferInProgress && timeout--) {
 		ret = I2C_Transfer(RETARGET_I2C_DEV);
 	}
+	platform_mutex_release(i2c_mutex);
 
 	if ( ret != i2cTransferDone ) {
 		return((int) ret);
@@ -102,10 +120,12 @@ int8_t RETARGET_I2CWrite(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uin
 	seq.buf[1].len  = count;
 	seq.buf[1].data = regData;
 
+	platform_mutex_acquire(i2c_mutex);
 	ret = I2C_TransferInit(RETARGET_I2C_DEV, &seq);
 	while (ret == i2cTransferInProgress && timeout--) {
 		ret = I2C_Transfer(RETARGET_I2C_DEV);
 	}
+	platform_mutex_release(i2c_mutex);
 
 	if ( ret != i2cTransferDone ) {
 		return((int) ret);
@@ -139,10 +159,12 @@ int8_t RETARGET_I2CWriteRead(uint8_t devAddr, uint8_t* wData, uint16_t wCount, u
 		seq.buf[1].data = rData;
 	}
 
+	platform_mutex_acquire(i2c_mutex);
 	ret = I2C_TransferInit(RETARGET_I2C_DEV, &seq);
 	while (ret == i2cTransferInProgress && timeout--) {
 		ret = I2C_Transfer(RETARGET_I2C_DEV);
 	}
+	platform_mutex_release(i2c_mutex);
 
 	if ( ret != i2cTransferDone ) {
 		return((int) ret);
