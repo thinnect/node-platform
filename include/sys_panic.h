@@ -36,7 +36,6 @@ extern const char * g_panic_str;
     // Halt the device - disable interrupts and loop forever
     #define sys_panic_action()                                  \
     ({                                                          \
-        NVIC_SystemReset();                                     \
         __ASM volatile("cpsid i" : : : "memory"); while(1);     \
     })
 
