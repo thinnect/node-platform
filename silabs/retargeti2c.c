@@ -19,7 +19,8 @@
 #define __LOG_LEVEL__ (LOG_LEVEL_retargeti2c & BASE_LOG_LEVEL)
 #include "log.h"
 
-static platform_mutex_t i2c_mutex, i2c_transaction_mutex;
+static platform_mutex_t i2c_mutex;
+static platform_mutex_t i2c_transaction_mutex;
 
 void RETARGET_I2CInit() {
 	I2C_Init_TypeDef i2cInit = I2C_INIT_DEFAULT;

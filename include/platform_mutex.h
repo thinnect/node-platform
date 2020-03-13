@@ -6,7 +6,8 @@
  * @author Raido Pahtma, Veiko Rütter
  */
 
-#pragma once
+#ifndef _PLATFORM_MUTEX_H_
+#define _PLATFORM_MUTEX_H_
 
 typedef void * platform_mutex_t;
 
@@ -31,4 +32,6 @@ void platform_mutex_acquire(platform_mutex_t mutex);
  * @param mutex A mutex.
  */
 void platform_mutex_release(platform_mutex_t mutex);
+
+#endif
 

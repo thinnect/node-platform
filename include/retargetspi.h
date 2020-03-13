@@ -5,7 +5,9 @@
  * @license MIT
  * @author Raido Pahtma, Veiko Rütter
  */
-#pragma once
+
+#ifndef _RETARGET_SPI_H_
+#define _RETARGET_SPI_H_
 
 #include <stdint.h>
 
@@ -57,4 +59,6 @@ int RETARGET_SpiTransfer(int cs, const void *out, void *in, int32_t len);
 int RETARGET_SpiTransferHalf(int cs,
                              const void *out, int32_t out_len,
                              void *in, int32_t in_len);
+
+#endif
 

@@ -5,7 +5,9 @@
  * @license MIT
  * @author Raido Pahtma
  */
-#pragma once
+
+#ifndef _RETARGET_I2C_H_
+#define _RETARGET_I2C_H_
 
 #include <stdint.h>
 
@@ -66,3 +68,6 @@ int8_t RETARGET_I2CWrite(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uin
  * @return 0 for success.
  */
 int8_t RETARGET_I2CWriteRead(uint8_t devAddr, uint8_t* wData, uint16_t wCount, uint8_t *rData, uint16_t rCount);
+
+#endif
+
