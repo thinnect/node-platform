@@ -5,7 +5,9 @@
  * @license MIT
  * @author Raido Pahtma
  */
-#pragma once
+
+#ifndef _RETARGET_I2C_H_
+#define _RETARGET_I2C_H_
 
 #include <stdint.h>
 
@@ -18,6 +20,16 @@ void RETARGET_I2CInit();
  * Deinitialize the I2C interface spicified in the retargeti2c.h header.
  */
 void RETARGET_I2CDeinit();
+
+/**
+ * Acquire the mutex for a transaction. Blocking function.
+ */
+void RETARGET_I2CTransactionLock();
+
+/**
+ * Release the mutex.
+ */
+void RETARGET_I2CTransactionUnlock();
 
 /**
  * Write 1 byte (regAddr) to set register and read 'count' bytes of data in a
@@ -56,3 +68,6 @@ int8_t RETARGET_I2CWrite(uint8_t devAddr, uint8_t regAddr, uint8_t *regData, uin
  * @return 0 for success.
  */
 int8_t RETARGET_I2CWriteRead(uint8_t devAddr, uint8_t* wData, uint16_t wCount, uint8_t *rData, uint16_t rCount);
+
+#endif
+
