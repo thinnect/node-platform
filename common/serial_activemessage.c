@@ -177,10 +177,11 @@ static uint16_t prepare_sp_message(uint8_t buffer[], uint16_t length, comms_msg_
 			m->payload_length = plen;
 			memcpy(m->payload, payload, plen);
 
-			// TODO set LQI
-			// TODO set RSSI
+			// TODO check if LQI/RSSI is set in the packet
+			m->payload[plen] = comms_get_lqi(lyr, msg);
+			m->payload[plen+1] = comms_get_rssi(lyr, msg);
 
-			return sizeof(tos_serial_message_t) + plen;
+			return sizeof(tos_serial_message_t) + plen + 2; // + 2 for LQI/RSSI
 		}
 		else // Should not happen, unless platform configured incorrectly
 		{

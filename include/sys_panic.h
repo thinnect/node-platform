@@ -36,7 +36,6 @@ extern const char * g_panic_str;
     // Halt the device - disable interrupts and loop forever
     #define sys_panic_action()                                  \
     ({                                                          \
-        NVIC_SystemReset();                                     \
         __ASM volatile("cpsid i" : : : "memory"); while(1);     \
     })
 
@@ -61,7 +60,7 @@ extern const char * g_panic_str;
         g_panic_file = moduulROM;                           \
         g_panic_line = __LINE__;                            \
         g_panic_str = strROM;                               \
-         \
+        sys_panic_action();                                 \
 })
 
 #endif//SYS_PANIC_H_

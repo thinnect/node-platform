@@ -80,6 +80,7 @@ struct radio_queue_element
 #define RDFLG_RAIL_RX_FAIL        (1 << 16)
 #define RDFLG_RAIL_TXACK_SENT     (1 << 17)
 #define RDFLG_RAIL_RXACK_TIMEOUT  (1 << 18)
+#define RDFLG_RAIL_RX_MORE        (1 << 20)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -128,6 +129,12 @@ static uint32_t m_sleep_time;
 
 // When the radio was stopped last
 static uint32_t m_stop_timestamp;
+
+// Packets actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_packets;
+
+// Bytes actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_bytes;
 
 // Internal RAIL initialization procedures
 static RAIL_Handle_t radio_rail_init();
@@ -229,6 +236,9 @@ comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
 
     m_sleep_time = 0;
     m_stop_timestamp = 0;
+
+    m_transmitted_packets = 0;
+    m_transmitted_bytes = 0;
 
     radio_msg_sending = NULL;
     radio_msg_queue_head = NULL;
@@ -513,6 +523,15 @@ uint32_t radio_sleep_time()
     return m_sleep_time;
 }
 
+uint32_t radio_tx_packets()
+{
+    return m_transmitted_packets;
+}
+
+uint32_t radio_tx_bytes()
+{
+    return m_transmitted_bytes;
+}
 
 void radio_idle()
 {
@@ -842,10 +861,10 @@ static void signal_send_done (comms_error_t err)
 
     if (qtime > 20)
     {
-        warn1("slow tx %"PRIu32, qtime);
+        warn3("slow tx %"PRIu32, qtime);
     }
 
-    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN1,
+    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
            msgp, err,
            qtime,
@@ -885,7 +904,7 @@ static void handle_radio_rx()
 {
     // RX processing -----------------------------------------------------------
     RAIL_RxPacketHandle_t rxh;
-    while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
+    if (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
         RAIL_RxPacketInfo_t packetInfo = {0};
         RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
@@ -937,7 +956,7 @@ static void handle_radio_rx()
 
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
                 {
-                    warn1("same seqNum:%02"PRIX8, buffer[3]);
+                    warn3("same seqNum:%02"PRIX8, buffer[3]);
                 }
                 else if ((packetInfo.packetBytes >= 12)
                        &&(buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
@@ -1008,6 +1027,11 @@ static void handle_radio_rx()
                                 rts,
                                 packetDetails.rssi, lqi, plen);
 
+                        debug2("Rx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" rssi:%"PRIi8"",
+                                buffer[12],
+                                source, dest,
+                                packetDetails.rssi);
+
                         comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
                     }
                     else warn1("rx bad pl %02"PRIX8" %"PRIu8, amid, plen);
@@ -1017,7 +1041,21 @@ static void handle_radio_rx()
             else err1("rxd");
         }
         else err1("rxi");
+
+        // There might be more packets in the queue, but don't let RX swamp the
+        // radio - defer it to the next run through the loop
+        osThreadFlagsSet(m_radio_thread_id, RDFLG_RAIL_RX_MORE);
     }
+}
+
+
+static void update_tx_stats(comms_msg_t * msg)
+{
+    m_transmitted_packets++; // Packet was actually sent out
+    m_transmitted_bytes += (14 // 12 bytes header + 2 bytes CRC
+        + comms_get_payload_length((comms_layer_t *)&m_radio_iface, msg)
+        + (comms_event_time_valid((comms_layer_t *)&m_radio_iface, msg) ? 5 : 0)
+        + 2);
 }
 
 
@@ -1029,6 +1067,8 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has completed -----------------------------------------------
         if (flags & RDFLG_RAIL_SEND_DONE)
         {
+            update_tx_stats(radio_msg_sending->msg);
+
             if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
             {
                 debug1("ackd");
@@ -1043,13 +1083,15 @@ static void handle_radio_tx (uint32_t flags)
 
             osTimerStop(m_send_timeout_timer);
 
+            update_tx_stats(radio_msg_sending->msg);
+
             if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg)
              < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
             {
                 resend = true;
             }
 
-            logger(resend?LOG_DEBUG1:LOG_WARN1, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
+            logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
                    comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
                    comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
             if (resend)
@@ -1203,6 +1245,33 @@ static void start_radio_now ()
 }
 
 
+static uint32_t rail_packet_age(RAIL_RxPacketHandle_t handle)
+{
+    RAIL_RxPacketInfo_t packetInfo = {0};
+    RAIL_RxPacketHandle_t ph = RAIL_GetRxPacketInfo(m_rail_handle, handle, &packetInfo);
+    if (ph != RAIL_RX_PACKET_HANDLE_INVALID)
+    {
+        RAIL_RxPacketDetails_t packetDetails = {0};
+        RAIL_Status_t status = RAIL_GetRxPacketDetailsAlt(m_rail_handle, ph, &packetDetails);
+        if (status == RAIL_STATUS_NO_ERROR)
+        {
+            RAIL_RxPacketDetails_t timeDetails = packetDetails;
+            if (RAIL_PACKET_TIME_INVALID != timeDetails.timeReceived.timePosition)
+            {
+                // Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
+                timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
+                // Want the earliest timestamp possible
+                if (RAIL_STATUS_NO_ERROR == RAIL_GetRxTimePreambleStartAlt(m_rail_handle, &timeDetails))
+                {
+                    return RAIL_GetTime() - timeDetails.timeReceived.packetTime;
+                }
+            }
+        }
+    }
+    return UINT32_MAX;
+}
+
+
 static void stop_radio_now ()
 {
     info2("stop");
@@ -1226,7 +1295,7 @@ static void stop_radio_now ()
     RAIL_RxPacketHandle_t rxh;
     while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
-        warn1("rm rxmsg");
+        warn2("rm rxmsg age:%"PRIu32"us", rail_packet_age(rxh));
         RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
         if (rst != RAIL_STATUS_NO_ERROR)
         {
