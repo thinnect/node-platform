@@ -169,7 +169,7 @@ int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in,
 	int32_t i;
 	if((out_len < 0) || (in_len < 0))return (-1);
 	platform_mutex_acquire(spi_mutex);
-/*	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
+	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
 	spi_cs(cs, 1);
 	if(out_len) {
 		RETARGET_SPI_UART->CMD = USART_CMD_TXTRIDIS;
@@ -181,7 +181,7 @@ int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in,
 	for(i = 0; i < in_len; i++) {
 		((uint8_t *)in)[i] = USART_SpiTransfer(RETARGET_SPI_UART, 0xFF);
 	}
-	spi_cs(cs, 0);*/
+	spi_cs(cs, 0);
 	platform_mutex_release(spi_mutex);
 	return 0;
 }
