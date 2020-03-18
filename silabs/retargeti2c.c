@@ -26,8 +26,8 @@ void RETARGET_I2CInit() {
 	I2C_Init_TypeDef i2cInit = I2C_INIT_DEFAULT;
 	i2cInit.freq = I2C_FREQ_FAST_MAX;
 
-	platform_mutex_init("i2c", i2c_mutex);
-	platform_mutex_init("i2c_ta", i2c_transaction_mutex);
+	i2c_mutex = platform_mutex_init("i2c");
+	i2c_transaction_mutex = platform_mutex_init("i2c_ta");
 
 	CMU_ClockEnable(cmuClock_GPIO, true);
 	CMU_ClockEnable(RETARGET_I2C_CLOCK, true);

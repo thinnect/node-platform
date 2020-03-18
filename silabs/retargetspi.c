@@ -15,7 +15,8 @@
 #include "em_gpio.h"
 #include "em_usart.h"
 
-static platform_mutex_t spi_mutex, spi_transaction_mutex_cs0;
+static platform_mutex_t spi_mutex;
+static platform_mutex_t spi_transaction_mutex_cs0;
 #ifdef RETARGET_SPI_CS1_PORT
 static platform_mutex_t spi_transaction_mutex_cs1;
 #endif
@@ -28,13 +29,13 @@ void RETARGET_SpiInit() {
 	init.msbf = true;
 	init.enable = usartDisable;
 
-	platform_mutex_init("spi", spi_mutex);
-	platform_mutex_init("spi_cs0", spi_transaction_mutex_cs0);
+	spi_mutex = platform_mutex_init("spi");
+	spi_transaction_mutex_cs0 = platform_mutex_init("spi_cs0");
 #ifdef RETARGET_SPI_CS1_PORT
-	platform_mutex_init("spi_cs1", spi_transaction_mutex_cs1);
+	spi_transaction_mutex_cs1 = platform_mutex_init("spi_cs1");
 #endif
 #ifdef RETARGET_SPI_CS2_PORT
-	platform_mutex_init("spi_cs2", spi_transaction_mutex_cs2);
+	spi_transaction_mutex_cs2 = platform_mutex_init("spi_cs2");
 #endif
 
 	CMU_ClockEnable(cmuClock_GPIO, true);
@@ -168,7 +169,7 @@ int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in,
 	int32_t i;
 	if((out_len < 0) || (in_len < 0))return (-1);
 	platform_mutex_acquire(spi_mutex);
-	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
+/*	RETARGET_SPI_UART->CMD = USART_CMD_CLEARTX | USART_CMD_CLEARRX;
 	spi_cs(cs, 1);
 	if(out_len) {
 		RETARGET_SPI_UART->CMD = USART_CMD_TXTRIDIS;
@@ -180,7 +181,7 @@ int RETARGET_SpiTransferHalf(int cs, const void *out, int32_t out_len, void *in,
 	for(i = 0; i < in_len; i++) {
 		((uint8_t *)in)[i] = USART_SpiTransfer(RETARGET_SPI_UART, 0xFF);
 	}
-	spi_cs(cs, 0);
+	spi_cs(cs, 0);*/
 	platform_mutex_release(spi_mutex);
 	return 0;
 }
