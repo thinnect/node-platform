@@ -9,13 +9,7 @@
 #ifndef _PLATFORM_MUTEX_H_
 #define _PLATFORM_MUTEX_H_
 
-struct platform_mutex_struct
-{
-	void * mutex;
-	void * attr;
-};
-
-typedef struct platform_mutex_struct * platform_mutex_t;
+typedef void * platform_mutex_t;
 
 /**
  * Initialize the mutex.
@@ -24,7 +18,7 @@ typedef struct platform_mutex_struct * platform_mutex_t;
  *
  * @return mutex or NULL on error
  */
-platform_mutex_t platform_mutex_init(char * name);
+platform_mutex_t platform_mutex_new(char * name);
 
 /**
  * Acquire the mutex. Blocking function.

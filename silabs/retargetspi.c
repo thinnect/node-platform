@@ -29,13 +29,13 @@ void RETARGET_SpiInit() {
 	init.msbf = true;
 	init.enable = usartDisable;
 
-	spi_mutex = platform_mutex_init("spi");
-	spi_transaction_mutex_cs0 = platform_mutex_init("spi_cs0");
+	spi_mutex = platform_mutex_new("spi");
+	spi_transaction_mutex_cs0 = platform_mutex_new("spi_cs0");
 #ifdef RETARGET_SPI_CS1_PORT
-	spi_transaction_mutex_cs1 = platform_mutex_init("spi_cs1");
+	spi_transaction_mutex_cs1 = platform_mutex_new("spi_cs1");
 #endif
 #ifdef RETARGET_SPI_CS2_PORT
-	spi_transaction_mutex_cs2 = platform_mutex_init("spi_cs2");
+	spi_transaction_mutex_cs2 = platform_mutex_new("spi_cs2");
 #endif
 
 	CMU_ClockEnable(cmuClock_GPIO, true);
