@@ -35,8 +35,9 @@ void platform_mutex_release(platform_mutex_t mutex)
 
 #else // USE_CMSIS_OS2
 
-void platform_mutex_init(char * name, platform_mutex_t mutex)
+platform_mutex_t platform_mutex_new(char * name)
 {
+	return NULL;
 }
 
 void platform_mutex_acquire(platform_mutex_t mutex)
