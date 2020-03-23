@@ -6,6 +6,8 @@
  * @author Raido Pahtma, Veiko Rütter
  */
 
+#include <stddef.h>
+
 #include "platform_mutex.h"
 
 #ifdef USE_CMSIS_OS2
