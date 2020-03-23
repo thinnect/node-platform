@@ -11,14 +11,16 @@
 #ifdef USE_CMSIS_OS2
 #include "cmsis_os2.h"
 
-void platform_mutex_init(char * name, platform_mutex_t mutex)
+platform_mutex_t platform_mutex_new(char * name)
 {
-	osMutexAttr_t mutex_attr;
-	mutex_attr.name = name;
-	mutex_attr.attr_bits = osMutexRecursive|osMutexPrioInherit;
-	mutex_attr.cb_mem = NULL;
-	mutex_attr.cb_size = 0U;
-	mutex = (void*)osMutexNew(&mutex_attr);
+	platform_mutex_t mutex;
+	osMutexAttr_t attr;
+	attr.name = name;
+	attr.attr_bits = osMutexRecursive|osMutexPrioInherit;
+	attr.cb_mem = NULL;
+	attr.cb_size = 0U;
+	mutex = (platform_mutex_t)osMutexNew(&attr);
+	return mutex;
 }
 
 void platform_mutex_acquire(platform_mutex_t mutex)
@@ -33,8 +35,9 @@ void platform_mutex_release(platform_mutex_t mutex)
 
 #else // USE_CMSIS_OS2
 
-void platform_mutex_init(char * name, platform_mutex_t mutex)
+platform_mutex_t platform_mutex_new(char * name)
 {
+	return NULL;
 }
 
 void platform_mutex_acquire(platform_mutex_t mutex)
