@@ -32,6 +32,23 @@
 #error "RADIO_INTERRUPT_PRIORITY not defined - must be numerically >= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY"
 #endif//RADIO_INTERRUPT_PRIORITY
 
+#ifndef DEFAULT_RAIL_TX_POWER_MODE
+#define DEFAULT_RAIL_TX_POWER_MODE 'N'
+#endif//DEFAULT_RAIL_TX_POWER_MODE
+
+#if DEFAULT_RAIL_TX_POWER_MODE=='L'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_LP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_LP
+#elif DEFAULT_RAIL_TX_POWER_MODE=='M'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_MP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_MP
+#elif DEFAULT_RAIL_TX_POWER_MODE=='H'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_HP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_HP
+#else
+    #error Select default PA by defining CFLAGS+=-DDEFAULT_RAIL_TX_POWER_MODE="'[H/M/L]'", note the proper use of quotes (="'X'").
+#endif
+
 #include "cmsis_os2.h"
 
 #include "mist_comm_iface.h"
@@ -97,7 +114,11 @@ volatile int g_rail_invalid_actions = 0;
 
 static uint16_t m_radio_address;
 static uint16_t m_radio_pan_id;
-static uint16_t m_radio_channel;
+static uint8_t m_radio_channel;
+
+static RAIL_TxPowerMode_t m_rail_power_mode = DEFAULT_RAIL_TX_POWER_MODE_2P4GIG;
+static int16_t m_rail_tx_power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
+
 static comms_layer_am_t m_radio_iface;
 
 static RAIL_Handle_t m_rail_handle;
@@ -107,6 +128,11 @@ static bool radio_tx_wait_ack;
 
 static RadioState_t m_state = ST_UNINITIALIZED;
 static bool m_radio_busy;
+
+// Radio test mode options
+static RAIL_StreamMode_t m_stream_mode;
+static bool m_stream_mode_enabled;
+static bool m_stream_mode_active;
 
 // Diagnostic counters
 static volatile uint8_t rx_busy;
@@ -269,13 +295,15 @@ comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
     m_state = ST_OFF; // Radio initialized, but not turned ON yet
     m_radio_busy = false; // Protected busy state
 
+    m_stream_mode_enabled = false;
+    m_stream_mode_active = false;
+
     info1("channel %d pan %02X rfpwr %d",
         (int)channel, (int)pan_id,
         (int)DEFAULT_RFPOWER_DBM);
 
     return (comms_layer_t *)&m_radio_iface;
 }
-
 
 void radio_deinit (comms_layer_t * iface)
 {
@@ -291,10 +319,57 @@ void radio_deinit (comms_layer_t * iface)
 }
 
 
-// Configure radio promiscuous mode, will take effect after radio is stopped and restarted
-void radio_set_promiscuous(bool promiscuous)
+// Configure radio promiscuous mode, will take effect after radio is restarted
+void radio_set_promiscuous (bool promiscuous)
 {
     m_radio_ieee802154_config.promiscuousMode = promiscuous;
+}
+
+
+// Select radio PA, will take effect after radio is restarted
+bool radio_set_power_mode (int pa)
+{
+    switch((RAIL_TxPowerMode_t)pa)
+    {
+        case RAIL_TX_POWER_MODE_2P4GIG_HP:
+        break;
+    #ifdef RAIL_TX_POWER_MODE_2P4GIG_MP
+        case RAIL_TX_POWER_MODE_2P4GIG_MP:
+        break;
+    #endif//RAIL_TX_POWER_MODE_2P4GIG_MP
+        case RAIL_TX_POWER_MODE_2P4GIG_LP:
+        break;
+        default:
+            return false;
+    }
+
+    m_rail_power_mode = (RAIL_TxPowerMode_t)pa;
+    return true;
+}
+
+// Set radio TX power, will take effect after radio is restarted
+void radio_set_tx_power (float pwr)
+{
+    m_rail_tx_power = (int16_t)(pwr * 10);
+}
+
+
+// Configure radio for test stream mode, will take effect after radio is restarted
+bool radio_stream_mode_enable (int mode)
+{
+    if(mode < RAIL_STREAM_MODES_COUNT)
+    {
+        m_stream_mode_enabled = true;
+        m_stream_mode = (RAIL_StreamMode_t)mode;
+        return true;
+    }
+    return false;
+}
+
+// Disable radio test stream mode, will take effect after radio is restarted
+void radio_stream_mode_disable ()
+{
+    m_stream_mode_enabled = false;
 }
 
 
@@ -360,23 +435,8 @@ static RAIL_Handle_t radio_rail_init ()
     // Declare the structure used to configure the PA
     // Battery: { RAIL_TX_POWER_MODE_2P4_HP, 1800, 10 };
 
-    #if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_LP)
-        #pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_LP"
-        #define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_LP
-    #endif
-    #if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_MP)
-        #pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_MP"
-        #define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_MP
-    #endif
-    #if defined(DEFAULT_RAIL_TX_POWER_MODE_2P4_HP)
-        #pragma message "DEFAULT_RAIL_TX_POWER_MODE_2P4_HP"
-        #define DEFAULT_RAIL_TX_POWER_MODE RAIL_TX_POWER_MODE_2P4_HP
-    #endif
-    #ifndef DEFAULT_RAIL_TX_POWER_MODE
-        #error "Must select PA by defining a variant of DEFAULT_RAIL_TX_POWER_MODE_2P4_[HP/MP/LP]!"
-    #endif
-
-    static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE, 3300, 10 };
+    static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE_2P4GIG, 3300, 10 };
+    txPowerConfig.mode = m_rail_power_mode;
 
     if (RAIL_STATUS_NO_ERROR != RAIL_ConfigTxPower(handle, &txPowerConfig))
     {
@@ -386,10 +446,10 @@ static RAIL_Handle_t radio_rail_init ()
         // Please ensure your configuration is valid for the selected part.
     }
 
-    #if defined(DEFAULT_RFPOWER_RAW)
+    #if defined(DEFAULT_RFPOWER_RAW) // This will override any other config
         rs = RAIL_SetTxPower(handle, DEFAULT_RFPOWER_RAW);
     #else
-        rs = RAIL_SetTxPowerDbm(handle, DEFAULT_RFPOWER_DBM * 10); // RAIL uses deci-dBm
+        rs = RAIL_SetTxPowerDbm(handle, m_rail_tx_power);
     #endif
 
     if (RAIL_STATUS_NO_ERROR != rs)
@@ -1231,7 +1291,17 @@ static void start_radio_now ()
     m_sleep_time += radio_timestamp() - m_stop_timestamp;
 
     RAIL_Idle(m_rail_handle, RAIL_IDLE, 1);
-    RAIL_Status_t s = RAIL_StartRx(m_rail_handle, m_radio_channel, NULL);
+
+    RAIL_Status_t s;
+    if (m_stream_mode_enabled)
+    {
+        m_stream_mode_active = true;
+        s = RAIL_StartTxStream(m_rail_handle, m_radio_channel, m_stream_mode);
+    }
+    else
+    {
+        s = RAIL_StartRx(m_rail_handle, m_radio_channel, NULL);
+    }
     if (s != RAIL_STATUS_NO_ERROR)
     {
         err1("rail err: %"PRIu8"", s);
@@ -1276,6 +1346,12 @@ static void stop_radio_now ()
 {
     info2("stop");
 
+    if (m_stream_mode_active)
+    {
+        RAIL_StopTxStream(m_rail_handle);
+        m_stream_mode_active = false;
+    }
+
     RAIL_Idle(m_rail_handle, RAIL_IDLE, 1);
 
     // Return any pending TX messages with COMMS_EOFF
@@ -1296,6 +1372,7 @@ static void stop_radio_now ()
     while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
         warn2("rm rxmsg age:%"PRIu32"us", rail_packet_age(rxh));
+        (void)rail_packet_age; // unused
         RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
         if (rst != RAIL_STATUS_NO_ERROR)
         {
