@@ -15,7 +15,8 @@
 #include "em_gpio.h"
 #include "em_usart.h"
 
-static platform_mutex_t spi_mutex, spi_transaction_mutex_cs0;
+static platform_mutex_t spi_mutex;
+static platform_mutex_t spi_transaction_mutex_cs0;
 #ifdef RETARGET_SPI_CS1_PORT
 static platform_mutex_t spi_transaction_mutex_cs1;
 #endif
@@ -28,13 +29,13 @@ void RETARGET_SpiInit() {
 	init.msbf = true;
 	init.enable = usartDisable;
 
-	platform_mutex_init("spi", spi_mutex);
-	platform_mutex_init("spi_cs0", spi_transaction_mutex_cs0);
+	spi_mutex = platform_mutex_new("spi");
+	spi_transaction_mutex_cs0 = platform_mutex_new("spi_cs0");
 #ifdef RETARGET_SPI_CS1_PORT
-	platform_mutex_init("spi_cs1", spi_transaction_mutex_cs1);
+	spi_transaction_mutex_cs1 = platform_mutex_new("spi_cs1");
 #endif
 #ifdef RETARGET_SPI_CS2_PORT
-	platform_mutex_init("spi_cs2", spi_transaction_mutex_cs2);
+	spi_transaction_mutex_cs2 = platform_mutex_new("spi_cs2");
 #endif
 
 	CMU_ClockEnable(cmuClock_GPIO, true);

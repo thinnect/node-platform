@@ -18,9 +18,12 @@ void spi_flash_wait_busy(void);
 void spi_flash_normalize(void);
 void spi_flash_mass_erase(void);
 
-int32_t spi_flash_read(uint32_t addr, uint32_t size, uint8_t *dst);
-int32_t spi_flash_write(uint32_t addr, uint32_t size, uint8_t *src);
+int32_t spi_flash_read(uint32_t addr, uint32_t size, uint8_t * dst);
+int32_t spi_flash_write(uint32_t addr, uint32_t size, uint8_t * src);
 int32_t spi_flash_erase(uint32_t addr, uint32_t size);
+
+void spi_flash_lock();
+void spi_flash_unlock();
 
 #endif
 
