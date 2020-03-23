@@ -45,6 +45,20 @@ void radio_deinit (comms_layer_t * iface);
 void radio_set_promiscuous(bool promiscuous);
 
 /**
+ * Set radio channel.
+ * Will take effect after radio is restarted.
+ * @return true if an acceptable channel was requested.
+ */
+bool radio_set_channel (uint16_t channel);
+
+/**
+ * Get radio channel.
+ * Valid only if radio has been restarted after channel was changed.
+ * @return Radio channel.
+ */
+uint16_t radio_get_channel ();
+
+/**
  * Set radio power mode (select PA).
  * Will take effect after radio is restarted.
  * @return true if an acceptable PA was requested.

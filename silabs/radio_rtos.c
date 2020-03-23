@@ -114,7 +114,8 @@ volatile int g_rail_invalid_actions = 0;
 
 static uint16_t m_radio_address;
 static uint16_t m_radio_pan_id;
-static uint8_t m_radio_channel;
+static uint8_t m_radio_channel_configured;
+static uint8_t m_radio_channel_current;
 
 static RAIL_TxPowerMode_t m_rail_power_mode = DEFAULT_RAIL_TX_POWER_MODE_2P4GIG;
 static int16_t m_rail_tx_power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
@@ -254,7 +255,7 @@ static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
 
 comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
 {
-    m_radio_channel = channel;
+    m_radio_channel_configured = channel;
     m_radio_pan_id = pan_id;
     m_radio_address = address;
 
@@ -326,6 +327,24 @@ void radio_set_promiscuous (bool promiscuous)
 }
 
 
+// Set radio channel
+bool radio_set_channel (uint16_t channel)
+{
+    if ((channel >= 11) && (channel <= 26))
+    {
+        m_radio_channel_configured = channel;
+        return true;
+    }
+    return false;
+}
+
+// Get radio channel.
+uint16_t radio_get_channel ()
+{
+    return m_radio_channel_current;
+}
+
+
 // Select radio PA, will take effect after radio is restarted
 bool radio_set_power_mode (int pa)
 {
@@ -379,17 +398,12 @@ void radio_stream_mode_disable ()
 static RAIL_Handle_t radio_rail_init ()
 {
     RAIL_Handle_t handle;
-    RAIL_Status_t rs;
 
     //RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
 
     static RAIL_Config_t rail_config = {
         .eventsCallback = &radio_rail_event_cb
     };
-
-    RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
-
-    static const RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
 
     rx_abort = 0;
     rx_busy = 0;
@@ -417,9 +431,18 @@ static RAIL_Handle_t radio_rail_init ()
     handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
     if (NULL == handle)
     {
-        // printf("RAIL INIT ERROR\n");
-        return(NULL);
+        err1("RAIL INIT ERROR");
     }
+    return handle;
+}
+
+
+static RAIL_Status_t radio_rail_configure (RAIL_Handle_t handle)
+{
+    RAIL_Status_t rs;
+
+    RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
+    static const RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
 
     // Put the variables declared above into the appropriate structure
     //RAIL_TxPowerCurvesConfig_t txPowerCurvesConfig = { curves24Hp, curvesSg, curves24Lp, piecewiseSegments };
@@ -438,10 +461,11 @@ static RAIL_Handle_t radio_rail_init ()
     static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE_2P4GIG, 3300, 10 };
     txPowerConfig.mode = m_rail_power_mode;
 
-    if (RAIL_STATUS_NO_ERROR != RAIL_ConfigTxPower(handle, &txPowerConfig))
+    rs = RAIL_ConfigTxPower(handle, &txPowerConfig);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("cfg pwr");
-        return NULL;
+        return rs;
         // Error: The PA could not be initialized due to an improper configuration.
         // Please ensure your configuration is valid for the selected part.
     }
@@ -455,24 +479,26 @@ static RAIL_Handle_t radio_rail_init ()
     if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("set pwr");
-        return NULL;
+        return rs;
     }
 
     // Initialize Radio Calibrations
-    if (RAIL_STATUS_NO_ERROR != RAIL_ConfigCal(handle, RAIL_CAL_ALL))
+    rs = RAIL_ConfigCal(handle, RAIL_CAL_ALL);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("cfg cal");
-        return NULL;
+        return rs;
     }
 
     // Load custom channel configuration for the generated radio settings
     #ifdef RAIL_USE_CUSTOM_CONFIG
         RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_config_changed_cb);
     #else
-        if (0 != RAIL_ConfigChannels(handle, NULL, &radio_rail_config_changed_cb))
+        rs = RAIL_ConfigChannels(handle, NULL, &radio_rail_config_changed_cb);
+        if (0 != rs)
         {
             err1("cfg chan");
-            return NULL;
+            return rs;
         }
     #endif//RAIL_USE_CUSTOM_CONFIG
 
@@ -484,13 +510,13 @@ static RAIL_Handle_t radio_rail_init ()
                          ;
     //                   | RAIL_EVENTS_RX_COMPLETION
 
-    if (RAIL_STATUS_NO_ERROR != RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events))
+    rs = RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, events);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("cfg evts");
-        return NULL;
+        return rs;
     }
     // RAIL_ConfigEvents(handle, RAIL_EVENTS_ALL, RAIL_EVENTS_ALL);
-
 
     static RAIL_DataConfig_t data_config = {
         .txSource = TX_PACKET_DATA,
@@ -498,10 +524,11 @@ static RAIL_Handle_t radio_rail_init ()
         .txMethod = PACKET_MODE,
         .rxMethod = PACKET_MODE,
     };
-    if (RAIL_STATUS_NO_ERROR != RAIL_ConfigData(handle, &data_config))
+    rs = RAIL_ConfigData(handle, &data_config);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("cfg dta");
-        return NULL;
+        return rs;
     }
 
     #ifdef _SILICON_LABS_32B_SERIES_2
@@ -514,25 +541,27 @@ static RAIL_Handle_t radio_rail_init ()
             antennaConfig.defaultPath = 0;
         #endif
         debug1("cfg ant %d", (int)antennaConfig.defaultPath);
-        if (RAIL_ConfigAntenna(handle, &antennaConfig) != RAIL_STATUS_NO_ERROR)
+        rs = RAIL_ConfigAntenna(handle, &antennaConfig);
+        if (RAIL_STATUS_NO_ERROR != rs)
         {
             err1("cfg ant");
-            return NULL;
+            return rs;
         }
         debug4("cfg ant %d");
     #endif//_SILICON_LABS_32B_SERIES_2
 
-    if (RAIL_STATUS_NO_ERROR != RAIL_IEEE802154_Init(handle, &m_radio_ieee802154_config))
+    rs = RAIL_IEEE802154_Init(handle, &m_radio_ieee802154_config);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
         err1("init");
-        return NULL;
+        return rs;
     }
     debug4("154 init");
 
-    RAIL_Status_t err = RAIL_IEEE802154_Config2p4GHzRadio(handle);
-    if (RAIL_STATUS_NO_ERROR != err)
+    rs = RAIL_IEEE802154_Config2p4GHzRadio(handle);
+    if (RAIL_STATUS_NO_ERROR != rs)
     {
-        err1("cfg %d", (int)err);
+        err1("cfg %d", (int)rs);
         return NULL;
     }
     debug4("154 cfgd");
@@ -541,7 +570,7 @@ static RAIL_Handle_t radio_rail_init ()
     if (g_rail_invalid_actions > 0)
     {
         err1("invalid:%d", g_rail_invalid_actions);
-        return NULL;
+        return RAIL_STATUS_INVALID_PARAMETER;
     }
 
     RAIL_IEEE802154_SetPanId(handle, m_radio_pan_id, 0);
@@ -552,7 +581,7 @@ static RAIL_Handle_t radio_rail_init ()
     debug4("railstartup fifo:%d", (int)m_rx_fifo_status);
     info1("rail txpwr: %d ddBm %d raw", (int)RAIL_GetTxPowerDbm(handle), (int)RAIL_GetTxPower(handle));
 
-    return handle;
+    return rs;
 }
 
 // RAIL RX FIFO setup ----------------------------------------------------------
@@ -826,11 +855,11 @@ static void radio_send_message (comms_msg_t * msg)
     // if ack is required in FCF
     if (radio_tx_wait_ack)
     {
-        rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
+        rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
     }
     else
     {
-        rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel, 0, &csmaConf, NULL);
+        rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
     }
     debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
            src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
@@ -842,7 +871,7 @@ static void radio_send_message (comms_msg_t * msg)
     else
     {
         RAIL_Idle(m_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
-        RAIL_StartRx(m_rail_handle, m_radio_channel, NULL);
+        RAIL_StartRx(m_rail_handle, m_radio_channel_current, NULL);
         osThreadFlagsSet(m_radio_thread_id, RDFLG_RADIO_SEND_FAIL);
     }
 }
@@ -1290,17 +1319,26 @@ static void start_radio_now ()
     SLEEP_SleepBlockBegin(sleepEM2);
     m_sleep_time += radio_timestamp() - m_stop_timestamp;
 
+    if(RAIL_STATUS_NO_ERROR != radio_rail_configure(m_rail_handle))
+    {
+        err1("rail cfg");
+        osDelay(1000);
+        sys_panic("rail");
+    }
+
     RAIL_Idle(m_rail_handle, RAIL_IDLE, 1);
+
+    m_radio_channel_current = m_radio_channel_configured;
 
     RAIL_Status_t s;
     if (m_stream_mode_enabled)
     {
         m_stream_mode_active = true;
-        s = RAIL_StartTxStream(m_rail_handle, m_radio_channel, m_stream_mode);
+        s = RAIL_StartTxStream(m_rail_handle, m_radio_channel_current, m_stream_mode);
     }
     else
     {
-        s = RAIL_StartRx(m_rail_handle, m_radio_channel, NULL);
+        s = RAIL_StartRx(m_rail_handle, m_radio_channel_current, NULL);
     }
     if (s != RAIL_STATUS_NO_ERROR)
     {
@@ -1397,9 +1435,10 @@ static void radio_thread (void * p)
     bool running = false;
 
     m_rail_handle = radio_rail_init();
-    if (m_rail_handle == NULL)
+    if (NULL == m_rail_handle)
     {
         err1("radio init");
+        osDelay(1000);
         sys_panic("rail");
     }
 
