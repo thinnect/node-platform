@@ -23,7 +23,7 @@ void mcu_dataflash_mass_erase(void);
  * Read from dataflash.
  * @param addr Where to read from.
  * @param size How much to read.
- * @param src Pointer to destination buffer.
+ * @param dst Pointer to destination buffer.
  * @return 0 for success;
  */
 int32_t mcu_dataflash_read(uint32_t addr, uint32_t size, uint8_t * dst);
