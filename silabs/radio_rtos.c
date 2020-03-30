@@ -547,7 +547,7 @@ static RAIL_Status_t radio_rail_configure (RAIL_Handle_t handle)
             err1("cfg ant");
             return rs;
         }
-        debug4("cfg ant %d");
+        debug4("cfg ant");
     #endif//_SILICON_LABS_32B_SERIES_2
 
     rs = RAIL_IEEE802154_Init(handle, &m_radio_ieee802154_config);
@@ -558,13 +558,15 @@ static RAIL_Status_t radio_rail_configure (RAIL_Handle_t handle)
     }
     debug4("154 init");
 
-    rs = RAIL_IEEE802154_Config2p4GHzRadio(handle);
-    if (RAIL_STATUS_NO_ERROR != rs)
-    {
-        err1("cfg %d", (int)rs);
-        return NULL;
-    }
-    debug4("154 cfgd");
+    #ifndef RAIL_USE_CUSTOM_CONFIG
+        rs = RAIL_IEEE802154_Config2p4GHzRadio(handle);
+        if (RAIL_STATUS_NO_ERROR != rs)
+        {
+            err1("cfg %d", (int)rs);
+            return rs;
+        }
+        debug4("154 cfgd");
+    #endif//RAIL_USE_CUSTOM_CONFIG
 
     // Config2p4GHzRadio triggers invalid action assert when called with some modules and SDK versions
     if (g_rail_invalid_actions > 0)
