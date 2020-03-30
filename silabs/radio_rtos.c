@@ -1411,8 +1411,10 @@ static void stop_radio_now ()
     RAIL_RxPacketHandle_t rxh;
     while (osOK == osMessageQueueGet(m_rx_queue, &rxh, NULL, 0))
     {
-        warn2("rm rxmsg age:%"PRIu32"us", rail_packet_age(rxh));
-        (void)rail_packet_age; // unused
+        if (rail_packet_age(rxh) > 5000)
+        {
+            warn2("rm rxmsg age:%"PRIu32"us", rail_packet_age(rxh));
+        }
         RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
         if (rst != RAIL_STATUS_NO_ERROR)
         {

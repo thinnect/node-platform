@@ -12,10 +12,6 @@
 
 #include "basic_counter.h"
 
-#ifndef TIMER_PERIPHERAL_FREQ
-	#error "Must define TIMER_PERIPHERAL_FREQ, it's probably 38400000 or 20000000"
-#endif//TIMER_PERIPHERAL_FREQ
-
 static volatile uint32_t counter_sec;
 static volatile uint16_t counter_msec;
 
@@ -40,11 +36,21 @@ void basic_counter_init() {
 	};
 	TIMER_InitCC_TypeDef timerCCInit = TIMER_INITCC_DEFAULT;
 
+	// Make sure timer uses HFXO as clock source on Series 2
+	#if defined(_SILICON_LABS_32B_SERIES_2)
+		CMU_ClockSelectSet(cmuClock_EM01GRPACLK, cmuSelect_HFXO);
+	#endif
 	CMU_ClockEnable(cmuClock_TIMER0, true);
 
 	TIMER_InitCC(TIMER0, 0, &timerCCInit);
 
-	TIMER_TopSet(TIMER0, (TIMER_PERIPHERAL_FREQ / 1000) - 1);
+	// Set timer top according to the configured clock frequency
+	#if defined(_SILICON_LABS_32B_SERIES_2)
+		// Previously configured HFXO as the clock source for TIMERs
+		TIMER_TopSet(TIMER0, (SystemHFXOClockGet() / 1000) - 1);
+	#else
+		TIMER_TopSet(TIMER0, (SystemHFClockGet() / 1000) - 1);
+	#endif
 
 	TIMER_Init(TIMER0, &timerInit);
 
