@@ -8,6 +8,7 @@
 #define EUI64_H_
 
 #define EUI64_LENGTH 8
+#define IEEE_EUI64_LENGTH 8
 
 // TODO Must add some actual data structures!
 

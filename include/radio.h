@@ -38,8 +38,51 @@ comms_layer_t * radio_init(uint16_t channel, uint16_t pan_id, uint16_t address);
  */
 void radio_deinit (comms_layer_t * iface);
 
-// Configure promiscuous mode
+/**
+ * Configure promiscuous mode.
+ * Will take effect after radio is restarted.
+ */
 void radio_set_promiscuous(bool promiscuous);
+
+/**
+ * Set radio channel.
+ * Will take effect after radio is restarted.
+ * @return true if an acceptable channel was requested.
+ */
+bool radio_set_channel (uint16_t channel);
+
+/**
+ * Get radio channel.
+ * Valid only if radio has been restarted after channel was changed.
+ * @return Radio channel.
+ */
+uint16_t radio_get_channel ();
+
+/**
+ * Set radio power mode (select PA).
+ * Will take effect after radio is restarted.
+ * @return true if an acceptable PA was requested.
+ */
+bool radio_set_power_mode (int pa);
+
+/**
+ * Set radio TX power (dBm).
+ * Will take effect after radio is restarted.
+ */
+void radio_set_tx_power (float pwr);
+
+/**
+ * Configure radio for test stream mode.
+ * Will take effect after radio is restarted.
+ * @return true if an acceptable mode was requested.
+ */
+bool radio_stream_mode_enable (int mode);
+
+/**
+ * Disable radio test stream mode.
+ * Will take effect after radio is restarted.
+ */
+void radio_stream_mode_disable ();
 
 /**
  * Force radio to idle. Only supported on "basic" implementations.
