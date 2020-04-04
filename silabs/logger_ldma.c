@@ -35,7 +35,9 @@
 #include "logger_ldma.h"
 
 #define LOGGER_LDMA_CHANNEL 0
-#define LOGGER_LDMA_DONE_THREAD_FLAG 0x00000001U
+#define LOGGER_THREAD_FLAG_LDMA_DONE 0x00000001U
+#define LOGGER_THREAD_FLAG_NEW_DATA  0x00000010U
+#define LOGGER_THREAD_FLAGS          0x00000011U
 #define STR_LOGGER_FULL_MESSAGE "\nfull\n"
 
 static uint8_t m_ldma_buf[LOGGER_LDMA_BUFFER_LENGTH];
@@ -64,7 +66,7 @@ static const LDMA_TransferCfg_t periTransferTx = LDMA_TRANSFER_CFG_PERIPHERAL(ld
 #endif//LOGGER_LDMA_USART2
 
 
-static void unsafe_try_ldma_start (void)
+static bool try_ldma_start (void)
 {
 	uint16_t length = 0;
 
@@ -120,6 +122,8 @@ static void unsafe_try_ldma_start (void)
 		xfer.xfer.dstInc  = ldmaCtrlDstIncNone;
 		xfer.xfer.doneIfs = 0;
 		LDMA_StartTransfer(LOGGER_LDMA_CHANNEL, (void*)&periTransferTx, (void*)&xfer);
+
+		return true;
 	}
 	else
 	{
@@ -143,6 +147,8 @@ static void unsafe_try_ldma_start (void)
 			#endif
 		}
 	}
+
+	return false;
 }
 
 
@@ -159,28 +165,36 @@ void LDMA_IRQHandler (void)
 
 	if (pending & (1<<LOGGER_LDMA_CHANNEL))
 	{
-		osThreadFlagsSet(m_ldma_thread, LOGGER_LDMA_DONE_THREAD_FLAG);
+		osThreadFlagsSet(m_ldma_thread, LOGGER_THREAD_FLAG_LDMA_DONE);
 	}
 }
 
 
 static void ldma_thread (void* argument)
 {
-
+	bool busy = false;
     for(;;)
     {
-    	osThreadFlagsWait(LOGGER_LDMA_DONE_THREAD_FLAG, osFlagsWaitAny, osWaitForever);
+    	uint32_t flags = osThreadFlagsWait(LOGGER_THREAD_FLAGS, osFlagsWaitAny, osWaitForever);
 
 		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
-		m_buf_full = false;
-		m_buf_start = m_buf_pos;
+		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE)
+		{
+			busy = false;
+			m_buf_full = false;
+			m_buf_start = m_buf_pos;
+		}
+
 		if ((m_buf_start >= LOGGER_LDMA_BUFFER_LENGTH)||(m_buf_end >= LOGGER_LDMA_BUFFER_LENGTH))
 		{
 			while(1); // panic
 		}
 
-		unsafe_try_ldma_start();
+		if (false == busy)
+		{
+			busy = try_ldma_start();
+		}
 
 		osMutexRelease(m_log_mutex);
 	}
@@ -248,10 +262,7 @@ int logger_ldma (const char *ptr, int len)
 			logger_append_data(STR_LOGGER_FULL_MESSAGE, strlen(STR_LOGGER_FULL_MESSAGE));
 		}
 
-		if (m_ldma_idle)
-		{
-			unsafe_try_ldma_start();
-		}
+		osThreadFlagsSet(m_ldma_thread, LOGGER_THREAD_FLAG_NEW_DATA);
 	}
 
 	osMutexRelease(m_log_mutex);
