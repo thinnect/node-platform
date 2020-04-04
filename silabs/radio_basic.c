@@ -29,7 +29,7 @@
 
 uint16_t radio_address;
 static uint16_t radio_pan_id;
-static uint16_t radio_channel;
+static uint8_t radio_channel;
 comms_layer_am_t radio_iface;
 
 static bool radio_sending;
@@ -55,7 +55,7 @@ static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle);
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user);
 static comms_send_done_f *radio_send_done;
 
-comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
+comms_layer_t* radio_init(uint8_t channel, uint16_t pan_id, uint16_t address) {
 	radio_channel = channel;
 	radio_pan_id = pan_id;
 	radio_address = address;
@@ -204,7 +204,7 @@ void radio_reenable() {
 	RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 }
 
-void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id) {
+void radio_reenable_channel_panid(uint8_t channel, uint16_t pan_id) {
 	radio_channel = channel;
 	radio_pan_id = pan_id;
 	RAIL_IEEE802154_SetPanId(radio_rail_handle, pan_id, 0);

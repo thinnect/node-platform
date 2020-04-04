@@ -253,7 +253,7 @@ static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
 };
 
 
-comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
+comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 {
     m_radio_channel_configured = channel;
     m_radio_pan_id = pan_id;
@@ -328,7 +328,7 @@ void radio_set_promiscuous (bool promiscuous)
 
 
 // Set radio channel
-bool radio_set_channel (uint16_t channel)
+bool radio_set_channel (uint8_t channel)
 {
     if ((channel >= 11) && (channel <= 26))
     {
@@ -339,7 +339,7 @@ bool radio_set_channel (uint16_t channel)
 }
 
 // Get radio channel.
-uint16_t radio_get_channel ()
+uint8_t radio_get_channel ()
 {
     return m_radio_channel_current;
 }

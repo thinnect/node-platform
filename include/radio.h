@@ -29,7 +29,7 @@
  *
  * @return A pointer to a comms_layer_t radio interface or NULL on failure.
  */
-comms_layer_t * radio_init(uint16_t channel, uint16_t pan_id, uint16_t address);
+comms_layer_t * radio_init(uint8_t channel, uint16_t pan_id, uint16_t address);
 
 /**
  * Deinitialize the radio. Make sure it is stopped before attempting this!
@@ -49,14 +49,14 @@ void radio_set_promiscuous(bool promiscuous);
  * Will take effect after radio is restarted.
  * @return true if an acceptable channel was requested.
  */
-bool radio_set_channel (uint16_t channel);
+bool radio_set_channel (uint8_t channel);
 
 /**
  * Get radio channel.
  * Valid only if radio has been restarted after channel was changed.
  * @return Radio channel.
  */
-uint16_t radio_get_channel ();
+uint8_t radio_get_channel ();
 
 /**
  * Set radio power mode (select PA).
@@ -99,7 +99,7 @@ void radio_reenable();
  * Pull radio out of idle with new parameters.
  * Only supported on "basic" implementations.
  */
-void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id);
+void radio_reenable_channel_panid(uint8_t channel, uint16_t pan_id);
 
 /**
  * Radio statistics - count time radio is initialized, but sleeping.
