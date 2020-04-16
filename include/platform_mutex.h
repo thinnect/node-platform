@@ -34,5 +34,12 @@ void platform_mutex_acquire(platform_mutex_t mutex);
  */
 void platform_mutex_release(platform_mutex_t mutex);
 
+/**
+ * Delete the mutex.
+
+ * @param mutex A mutex.
+ */
+void platform_mutex_delete(platform_mutex_t mutex);
+
 #endif
 
