@@ -33,7 +33,8 @@ void MCUTemperatureReader_init()
     init.diff = false;
     init.negSel = adcNegSelVSS;
     init.posSel = adcPosSelTEMP;
-    init.reference = adcRef1V25 ;
+    init.reference = adcRef1V25;
+    init.acqTime = adcAcqTime256;
 
     ADC_Reset(ADC0);
 
