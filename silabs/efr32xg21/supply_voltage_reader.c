@@ -30,9 +30,6 @@
 #define CLK_ADC_FREQ            10000   // CLK_ADC
 
 void SupplyVoltageReader_init() {
-    // Set clock frequency to defined value
-    CMU_HFRCOEM23BandSet(HFRCOEM23_FREQ);
-
     IADC_Init_t init = IADC_INIT_DEFAULT;
     IADC_AllConfigs_t initAllConfigs = IADC_ALLCONFIGS_DEFAULT;
     IADC_InitSingle_t initSingle = IADC_INITSINGLE_DEFAULT;
@@ -41,10 +38,14 @@ void SupplyVoltageReader_init() {
     // Reset IADC to reset configuration in case it has been modified
     IADC_reset(IADC0);
 
+    // Set clock frequency to defined value
+    CMU_HFRCOEM23BandSet(HFRCOEM23_FREQ);
+
     // Configure IADC clock source for use while in EM2
     // Note that HFRCOEM23 is the lowest frequency source available for the IADC
     CMU_ClockSelectSet(cmuClock_IADCCLK, cmuSelect_HFRCOEM23);
-    //CMU_ClockEnable(cmuClock_IADCCLK, true);
+    CMU_ClockEnable(cmuClock_IADCCLK, true);
+    CMU_ClockEnable(cmuClock_GPIO, true);
 
     // Modify init structs and initialize
     init.warmup = iadcWarmupKeepWarm;
@@ -66,6 +67,8 @@ void SupplyVoltageReader_init() {
     // Single initialization
     initSingle.dataValidLevel = _IADC_SCANFIFOCFG_DVL_VALID1;
 
+    initSingle.showId = true;
+
     // Set conversions to run continuously
     //initSingle.triggerAction = iadcTriggerActionOnce;
 
@@ -73,8 +76,8 @@ void SupplyVoltageReader_init() {
     initSingleInput.posInput = iadcPosInputAvdd;
     //When selecting SUPPLY for PORTPOS and GND for PORTNEG, PINNEG should be
     //configured for an odd number (1, 3, 5...) to avoid a polarity error.
-    initSingleInput.negInput = iadcNegInputGnd + 1; // So +1
-
+    // iadcNegInputGnd in older SDKs however is even, it is odd in > 2.7.
+    initSingleInput.negInput = iadcNegInputGnd | 1; // for compatibility, always set lowest bit to 1
 
     // Initialize IADC
     IADC_init(IADC0, &init, &initAllConfigs);
@@ -89,21 +92,23 @@ int16_t SupplyVoltageReader_read() {
     uint32_t avg = 0;
     uint32_t num = 0;
     for(uint8_t i=0; i<3;i++) {
-        uint32_t count = 0;
-        uint32_t status;
-
         IADC_command(IADC0, iadcCmdStartSingle);
 
-        status = IADC0->STATUS;
-        debug1("start %lX", status);
-        while(!(status & _IADC_STATUS_SINGLEFIFODV_MASK) && (count++ <= 1000000)) {
+        uint32_t status = IADC_getStatus(IADC0);
+        debug1("start st %X", (unsigned int)status);
+
+        uint32_t count = 0;
+        while(!(status & IADC_STATUS_SINGLEFIFODV) && (count++ <= 1000000)) {
             count++;
-            status = IADC0->STATUS;
+            status = IADC_getStatus(IADC0);
             //debug1("converting %lX", status);
         }
 
-        if(count > 1000000) {
-            err1("failed %"PRIu32"", count);
+        uint32_t ints = IADC_getInt(IADC0);
+        debug1("end st:%"PRIX32" c:%"PRIu32" IF:%"PRIX32, status, count, ints);
+
+        if((count > 1000000)||(IADC_IF_POLARITYERR & ints)) {
+            err1("c:%"PRIu32" IF:%"PRIX32, count, ints);
             return 0;
         } else {
             IADC_Result_t sample = IADC_pullSingleFifoResult(IADC0);
@@ -119,5 +124,5 @@ int16_t SupplyVoltageReader_read() {
 
 void SupplyVoltageReader_deinit() {
     IADC_reset(IADC0);
-    // TODO Stop Clock?
+    CMU_ClockEnable(cmuClock_IADCCLK, false);
 }
