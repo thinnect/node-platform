@@ -35,6 +35,11 @@ void platform_mutex_release(platform_mutex_t mutex)
 	osMutexRelease((osMutexId_t)mutex);
 }
 
+void platform_mutex_delete(platform_mutex_t mutex)
+{
+	osMutexDelete((osMutexId_t)mutex);
+}
+
 #else // USE_CMSIS_OS2
 
 platform_mutex_t platform_mutex_new(char * name)
@@ -47,6 +52,10 @@ void platform_mutex_acquire(platform_mutex_t mutex)
 }
 
 void platform_mutex_release(platform_mutex_t mutex)
+{
+}
+
+void platform_mutex_delete(platform_mutex_t mutex)
 {
 }
 
