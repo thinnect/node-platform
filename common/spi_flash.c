@@ -22,16 +22,33 @@ static struct{
 	{ 0x100000, 0x800000},
 };
 
+static int spi_flash_sleeping = 1;
+
 void spi_flash_init(void)
 {
 	int i;
-	// Wake FLASH chip from deep sleep
-	RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
-	spi_flash_wait_busy();
+	spi_flash_resume();
 	for (i = 0; i < SPI_FLASH_PARTITIONS_COUNT; i++)
 	{
 		spi_flash_partitions[i].size = spi_flash_partitions[i].end - spi_flash_partitions[i].start;
 	}
+}
+
+void spi_flash_suspend(void)
+{
+	// Put FLASH into deep sleep
+	spi_flash_wait_busy();
+	RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xB9", 1, NULL, 0);
+	spi_flash_sleeping = 1;
+}
+
+void spi_flash_resume(void)
+{
+	if (!spi_flash_sleeping) return;
+	// Wake FLASH chip from deep sleep
+	RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
+	spi_flash_wait_busy();
+	spi_flash_sleeping = 0;
 }
 
 void spi_flash_cmd(uint8_t cmd)
@@ -62,6 +79,7 @@ void spi_flash_wait_wel(void)
 
 void spi_flash_mass_erase(void)
 {
+	spi_flash_resume();
 	spi_flash_wait_busy();
 	spi_flash_cmd(0x06);
 	spi_flash_wait_wel();
@@ -81,6 +99,8 @@ int32_t spi_flash_read(int partition, uint32_t addr, uint32_t size, uint8_t * ds
 
 	if (addr > spi_flash_partitions[partition].size)
 		return -1;
+
+	spi_flash_resume();
 
 	len = spi_flash_partitions[partition].size - addr;
 	if (size > len)
@@ -109,6 +129,8 @@ int32_t spi_flash_write(int partition, uint32_t addr, uint32_t size, uint8_t * s
 
 	if (addr > spi_flash_partitions[partition].size)
 		return -1;
+
+	spi_flash_resume();
 
 	len = spi_flash_partitions[partition].size - addr;
 	if (size > len)
@@ -153,6 +175,8 @@ int32_t spi_flash_erase(int partition, uint32_t addr, uint32_t size) // sector 4
 		return -1;
 
 	addr += spi_flash_partitions[partition].start;
+
+	spi_flash_resume();
 
 	spi_flash_wait_busy();
 	spi_flash_cmd(0x06);
