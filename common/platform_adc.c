@@ -15,7 +15,7 @@
 #endif//PLATFORM_ADC_COUNT
 
 static osSemaphoreId_t m_adc_semaphores[PLATFORM_ADC_COUNT];
-static void * m_adcs[] = PLAFTORM_ADCS;
+static void * m_adcs[] = PLATFORM_ADCS;
 
 void platform_adc_management_init ()
 {
