@@ -12,21 +12,22 @@
 #define SPI_FLASH_CS               0
 #define SPI_FLASH_PARTITIONS_COUNT 3
 
-static struct{
-	uint32_t start;
-	uint32_t end;
-	uint32_t size;
-}spi_flash_partitions[SPI_FLASH_PARTITIONS_COUNT] = {
-	{ 0,        0x4000 },
-	{ 0x4000,   0x100000},
-	{ 0x100000, 0x800000},
-};
-
+static struct spi_flash_partitions_struct spi_flash_partitions[SPI_FLASH_PARTITIONS_COUNT];
 static int spi_flash_sleeping = 1;
 
 void spi_flash_init(void)
 {
 	int i;
+
+	spi_flash_partitions[0].start = 0x0;
+	spi_flash_partitions[0].end = 0x4000;
+
+	spi_flash_partitions[1].start = 0x4000;
+	spi_flash_partitions[1].end = 0x100000;
+
+	spi_flash_partitions[2].start = 0x100000;
+	spi_flash_partitions[2].end = 0x800000;
+
 	spi_flash_resume();
 	for (i = 0; i < SPI_FLASH_PARTITIONS_COUNT; i++)
 	{
@@ -37,6 +38,7 @@ void spi_flash_init(void)
 void spi_flash_suspend(void)
 {
 	// Put FLASH into deep sleep
+	if (spi_flash_sleeping) return;
 	spi_flash_wait_busy();
 	RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xB9", 1, NULL, 0);
 	spi_flash_sleeping = 1;
@@ -44,10 +46,18 @@ void spi_flash_suspend(void)
 
 void spi_flash_resume(void)
 {
+	int i, j;
+	uint8_t buffer[3];
 	if (!spi_flash_sleeping) return;
 	// Wake FLASH chip from deep sleep
-	RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
-	spi_flash_wait_busy();
+	for (i = 0; i < 3; i++) {
+		RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
+		for(j = 0; j < 1000; j++) {
+			buffer[0] = 0xFF;
+			RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\x9F", 1, buffer, 3);
+			if((buffer[0] != 0xFF) && (buffer[0] != 0x00))break;
+		}
+	}
 	spi_flash_sleeping = 0;
 }
 
