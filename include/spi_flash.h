@@ -10,6 +10,13 @@
 
 #include <stdint.h>
 
+struct spi_flash_partitions_struct
+{
+	uint32_t start;
+	uint32_t end;
+	uint32_t size;
+};
+
 void spi_flash_init(void);
 
 void spi_flash_suspend(void);
