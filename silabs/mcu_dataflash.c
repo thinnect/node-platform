@@ -26,34 +26,42 @@
 #endif//MCU_DATAFLASH_SIZE
 
 static platform_mutex_t m_mcu_dataflash_mutex;
+static platform_mutex_t m_mcu_dataflash_lock_mutex;
 
-void mcu_dataflash_init(void)
+void mcu_dataflash_init (void)
 {
 	debug1("init");
 	m_mcu_dataflash_mutex = platform_mutex_new("mcuf");
+	m_mcu_dataflash_lock_mutex = platform_mutex_new("mcufl");
 	MSC_Init();
+	debug1("initd");
 }
 
-void mcu_dataflash_mass_erase(void)
+void mcu_dataflash_mass_erase (void)
 {
-	mcu_dataflash_erase(MCU_DATAFLASH_START, MCU_DATAFLASH_SIZE);
+	mcu_dataflash_erase(0, MCU_DATAFLASH_START, MCU_DATAFLASH_SIZE);
 }
 
-int32_t mcu_dataflash_read(uint32_t addr, uint32_t size, uint8_t * dst)
+int32_t mcu_dataflash_read (int partition, uint32_t addr, uint32_t size, uint8_t * dst)
 {
 	debug1("R %"PRIu32" L %"PRIu32, addr, size);
+
+	addr += MCU_DATAFLASH_START;
+
 	platform_mutex_acquire(m_mcu_dataflash_mutex);
 	memcpy(dst, (void*)addr, size);
 	platform_mutex_release(m_mcu_dataflash_mutex);
 	return MCUDF_SUCCESS;
 }
 
-int32_t mcu_dataflash_write(uint32_t addr, uint32_t size, uint8_t * src)
+int32_t mcu_dataflash_write (int partition, uint32_t addr, uint32_t size, uint8_t * src)
 {
 	debug1("W %"PRIu32" L %"PRIu32, addr, size);
 	debugb1("", src, (uint8_t)size);
 
 	uint32_t misaligned = addr % 4;
+
+	addr += MCU_DATAFLASH_START;
 
 	platform_mutex_acquire(m_mcu_dataflash_mutex);
 
@@ -121,8 +129,10 @@ int32_t mcu_dataflash_write(uint32_t addr, uint32_t size, uint8_t * src)
 	return MCUDF_SUCCESS;
 }
 
-int32_t mcu_dataflash_erase(uint32_t addr, uint32_t size)
+int32_t mcu_dataflash_erase (int partition, uint32_t addr, uint32_t size)
 {
+	addr += MCU_DATAFLASH_START;
+
 	platform_mutex_acquire(m_mcu_dataflash_mutex);
 
 	if (0 == addr % FLASH_PAGE_SIZE) // Check alignment
@@ -147,4 +157,30 @@ int32_t mcu_dataflash_erase(uint32_t addr, uint32_t size)
 
 	platform_mutex_release(m_mcu_dataflash_mutex);
 	return MCUDF_SUCCESS;
+}
+
+int32_t mcu_dataflash_size (int partition)
+{
+	if (0 == partition)
+	{
+		return MCU_DATAFLASH_SIZE;
+	}
+	return -1;
+}
+
+int32_t mcu_dataflash_erase_size (int partition)
+{
+	return FLASH_PAGE_SIZE;
+}
+
+void mcu_dataflash_lock ()
+{
+	debug1("lck");
+	platform_mutex_acquire(m_mcu_dataflash_lock_mutex);
+}
+
+void mcu_dataflash_unlock ()
+{
+	debug1("ulck");
+	platform_mutex_release(m_mcu_dataflash_lock_mutex);
 }
