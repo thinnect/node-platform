@@ -532,8 +532,8 @@ static RAIL_Status_t radio_rail_configure (RAIL_Handle_t handle)
     }
 
     #ifdef _SILICON_LABS_32B_SERIES_2
-        //   - RF2G2_IO1: 0
-        //   - RF2G2_IO2: 1
+        //   - RF2G4_IO1: 0
+        //   - RF2G4_IO2: 1
         static RAIL_AntennaConfig_t antennaConfig = { false }; // Zero out structure
         #ifdef DEFAULT_ANTENNA_PATH_IO2
             antennaConfig.defaultPath = 1;
