@@ -10,7 +10,10 @@
  * @author Konstantin Bilozor, Raido Pahtma
  * @license MIT
  */
-#pragma once
+#ifndef LOGGER_LDMA_H_
+#define LOGGER_LDMA_H_
+
+#include "logger_fwrite_basic.h"
 
 #ifndef LOGGER_LDMA_BUFFER_LENGTH
 #define LOGGER_LDMA_BUFFER_LENGTH 4096
@@ -40,3 +43,5 @@ int logger_ldma(const char *ptr, int len);
 #else
 #error "LDMA logging not configured or configuration not supported!"
 #endif
+
+#endif//LOGGER_LDMA_H_
