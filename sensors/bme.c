@@ -23,7 +23,15 @@
 #define __LOG_LEVEL__ (LOG_LEVEL_bme & BASE_LOG_LEVEL)
 #include "log.h"
 
-static void delay_ms(uint32_t period){
+/**
+ * Delay function for Bosch BME library. It used to be milliseconds, but now
+ * requires microseconds. Until proper microsecond delay is not available,
+ * divide by 1000 and add 1 just in case ... longer delays should probably
+ * be safer than shorter ones.
+ */
+static void bme_delay_us (uint32_t period, void *intf_ptr)
+{
+	period = period/1000 + 1; // Make delays longer
 	#ifdef USE_CMSIS_OS2
 	osDelay(period);
 	#else
@@ -31,23 +39,34 @@ static void delay_ms(uint32_t period){
 	#endif//USE_CMSIS_OS2
 }
 
-bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
+static int8_t bme_i2c_read (uint8_t reg_addr, uint8_t *data, uint32_t len, void *intf_ptr)
+{
+	return RETARGET_I2CRead (*((uint8_t*)intf_ptr), reg_addr, data, len);
+}
+
+static int8_t bme_i2c_write (uint8_t reg_addr, const uint8_t *data, uint32_t len, void *intf_ptr)
+{
+	return RETARGET_I2CWrite (*((uint8_t*)intf_ptr), reg_addr, (uint8_t*)data, len);
+}
+
+bool bme280_read (int32_t *temperature, uint32_t *pressure, uint32_t *humidity)
+{
+	uint8_t bme_i2c_addr = BME280_I2C_ADDR_PRIM;
 	struct bme280_dev bme280;
 	uint8_t bme280_Id;
 	int8_t result;
 	struct bme280_data comp_data;
 
-	bme280.dev_id = BME280_I2C_ADDR_PRIM;
+	bme280.intf_ptr = &bme_i2c_addr;
 	bme280.chip_id = BME280_CHIP_ID;
 	bme280.intf = BME280_I2C_INTF;
-	bme280.read = RETARGET_I2CRead;
-	bme280.write = RETARGET_I2CWrite;
-	bme280.delay_ms = delay_ms;
+	bme280.read = bme_i2c_read;
+	bme280.write = bme_i2c_write;
+	bme280.delay_us = bme_delay_us;
 
-	delay_ms(500);
-
-	RETARGET_I2CRead(bme280.dev_id, BME280_CHIP_ID_ADDR, &bme280_Id, 1);
-	if(bme280_Id != BME280_CHIP_ID){
+	RETARGET_I2CRead (bme_i2c_addr, BME280_CHIP_ID_ADDR, &bme280_Id, 1);
+	if (bme280_Id != BME280_CHIP_ID)
+	{
 		debug1("CHIP ID ERROR");
 		return false;
 	}
@@ -67,18 +86,21 @@ bool bme280_read(int32_t *temperature, uint32_t *pressure, uint32_t *humidity){
 	result = bme280_set_sensor_mode(BME280_NORMAL_MODE, &bme280);
 	debug1("SET SENSOR MODE: %u", (int)result);
 
-	delay_ms(80);
+	bme_delay_us(80000, NULL);
 
 	result = bme280_get_sensor_data(BME280_ALL, &comp_data, &bme280);
 	debug1("GET SENSOR DATA: %u", (int)result);
 
-	if(temperature != NULL){
+	if (NULL != temperature)
+	{
 		*temperature = comp_data.temperature;
 	}
-	if(pressure != NULL){
+	if (NULL != pressure)
+	{
 		*pressure = comp_data.pressure;
 	}
-	if(humidity != NULL){
+	if (NULL != humidity)
+	{
 		*humidity = comp_data.humidity;
 	}
 
