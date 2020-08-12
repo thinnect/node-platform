@@ -105,7 +105,7 @@ void radio_reenable_channel_panid(uint8_t channel, uint16_t pan_id);
  * Radio statistics - count time radio is initialized, but sleeping.
  * @return sleep time in milliseconds.
  */
-uint32_t radio_sleep_time();
+uint64_t radio_sleep_time();
 
 /**
  * Radio statistics - count number of transmitted packets (including retries).

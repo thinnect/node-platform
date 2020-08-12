@@ -152,7 +152,7 @@ static uint32_t m_rail_sent_timestamp;
 static uint8_t m_csma_retries;
 
 // Time spent if OFF state since radio was initialized
-static uint32_t m_sleep_time;
+static uint64_t m_sleep_time;
 
 // When the radio was stopped last
 static uint32_t m_stop_timestamp;
@@ -609,7 +609,7 @@ RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle)
 }
 //------------------------------------------------------------------------------
 
-uint32_t radio_sleep_time()
+uint64_t radio_sleep_time()
 {
     return m_sleep_time;
 }

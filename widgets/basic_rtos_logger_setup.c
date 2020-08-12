@@ -8,7 +8,7 @@
  * @license MIT
  */
 
-#include "cmsis_os2.h"
+#include "cmsis_os2_ext.h"
 
 #include "retargetserial.h"
 #include "em_usart.h"
