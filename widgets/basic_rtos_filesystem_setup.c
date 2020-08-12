@@ -46,6 +46,7 @@ void basic_rtos_filesystem_setup ()
     m_spi_fs_driver.erase = spi_flash_erase;
     m_spi_fs_driver.size = spi_flash_size;
     m_spi_fs_driver.erase_size = spi_flash_erase_size;
+    m_spi_fs_driver.suspend = spi_flash_suspend;
     m_spi_fs_driver.lock = spi_flash_lock;
     m_spi_fs_driver.unlock = spi_flash_unlock;
 

@@ -17,9 +17,20 @@ struct spi_flash_partitions_struct
 	uint32_t size;
 };
 
+/**
+ * Initialize the SPI flash component.
+ */
 void spi_flash_init(void);
 
+/**
+ * Suspend the SPI flash to save power, resume is automatic.
+ * Be sure to lock and unlock the flash around this call.
+ */
 void spi_flash_suspend(void);
+
+/**
+ * Explicitly wake the flash, normally done automatically.
+ */
 void spi_flash_resume(void);
 
 void spi_flash_cmd(uint8_t cmd);
@@ -34,8 +45,20 @@ int32_t spi_flash_erase(int partition, uint32_t addr, uint32_t size);
 int32_t spi_flash_size(int partition);
 int32_t spi_flash_erase_size(int partition);
 
+/**
+ * Milliseconds spent in suspended state.
+ * SPI_FLASH_TRACK_SUSPENDED_TIME must be defined, otherwise always returns 0.
+ */
+uint64_t spi_flash_suspended_time();
+
+/**
+ * Lock the SPI flash before access.
+ */
 void spi_flash_lock();
+
+/**
+ * Unlock the SPI flash after access.
+ */
 void spi_flash_unlock();
 
-#endif
-
+#endif//_SPI_FLASH_H_
