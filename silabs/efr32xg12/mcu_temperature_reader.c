@@ -11,6 +11,8 @@
 #include "em_adc.h"
 #include "em_cmu.h"
 
+#include "platform_adc.h"
+
 #include <stdio.h>
 
 #include "loglevels.h"
@@ -36,15 +38,18 @@ void MCUTemperatureReader_init()
     init.reference = adcRef1V25;
     init.acqTime = adcAcqTime256;
 
-    ADC_Reset(ADC0);
+    if(platform_adc_request(ADC0, osWaitForever))
+    {
+        ADC_Reset(ADC0);
 
-    // Enable ADC clock and prescaler
-    CMU_ClockEnable(cmuClock_ADC0, true);
-    ADC_Defaults.prescale = ADC_PrescaleCalc(100000, 0);
-    /*start with defaults */
-    ADC_Init(ADC0,&ADC_Defaults);
+        // Enable ADC clock and prescaler
+        CMU_ClockEnable(cmuClock_ADC0, true);
+        ADC_Defaults.prescale = ADC_PrescaleCalc(100000, 0);
+        /*start with defaults */
+        ADC_Init(ADC0,&ADC_Defaults);
 
-    ADC_InitSingle(ADC0, &init);
+        ADC_InitSingle(ADC0, &init);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -136,4 +141,5 @@ float MCUTemperatureReader_read()
 void MCUTemperatureReader_deinit() {
     CMU_ClockEnable(cmuClock_ADC0, false);
     ADC_Reset(ADC0);
+    platform_adc_release(ADC0);
 }
