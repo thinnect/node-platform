@@ -16,7 +16,7 @@ uint32_t time_yxk (const time_t * t)
 		struct tm yxk;
 		if (NULL != gmtime_r(t, &yxk))
 		{
-			yxkzero(&yxk);
+			yxk_zero(&yxk);
 			return (uint32_t)(*t - mktime(&yxk));
 		}
 	}
@@ -30,7 +30,7 @@ time_t yxk_time (uint32_t yxks, const time_t * now)
 		struct tm epoch;
 		if (NULL != gmtime_r(now, &epoch))
 		{
-			yxkzero(&epoch);
+			yxk_zero(&epoch);
 			return (time_t)mktime(&epoch) + yxks;
 		}
 	}

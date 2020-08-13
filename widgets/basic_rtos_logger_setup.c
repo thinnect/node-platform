@@ -30,7 +30,8 @@ void basic_noos_logger_setup ()
 
 void basic_rtos_logger_setup ()
 {
-    osDelay(10); // And do a small delay to clear buffers
+    osDelay(1); // Do a small delay to clear buffers
+
     #if defined(LOGGER_LDMA)
         logger_ldma_init();
         #if defined(LOGGER_TIMESTAMP)
