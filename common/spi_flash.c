@@ -9,6 +9,12 @@
 #include "retargetspi.h"
 #include <stdio.h>
 
+#include "loglevels.h"
+#define __MODUUL__ "spif"
+#define __LOG_LEVEL__ (LOG_LEVEL_spi_flash & BASE_LOG_LEVEL)
+#include "log.h"
+#include "sys_panic.h"
+
 #define SPI_FLASH_CS               0
 #define SPI_FLASH_PARTITIONS_COUNT 3
 
@@ -62,12 +68,14 @@ void spi_flash_suspend(void)
 	m_suspend_timestamp = osCounterGetMilli();
 	osMutexRelease(m_suspend_mutex);
 	#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
+
+	debug1("slp");
 }
 
 void spi_flash_resume(void)
 {
-	int i, j;
-	uint8_t buffer[3];
+	int i;
+
 	if (!spi_flash_sleeping)
 	{
 		return;
@@ -79,21 +87,28 @@ void spi_flash_resume(void)
 	osMutexRelease(m_suspend_mutex);
 	#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
+	debug1("wake");
+
 	// Wake FLASH chip from deep sleep
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < 100; i++)
 	{
+		int j;
 		RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
 		for(j = 0; j < 1000; j++)
 		{
+			uint8_t buffer[3];
 			buffer[0] = 0xFF;
 			RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\x9F", 1, buffer, 3);
 			if((buffer[0] != 0xFF) && (buffer[0] != 0x00))
 			{
-				break;
+				spi_flash_sleeping = 0;
+				debug1("rdy");
+				return;
 			}
 		}
 	}
-	spi_flash_sleeping = 0;
+
+	sys_panic("flash"); // Flash did not wake up
 }
 
 uint64_t spi_flash_suspended_time(void)
@@ -158,6 +173,9 @@ int32_t spi_flash_read(int partition, uint32_t addr, uint32_t size, uint8_t * ds
 {
 	uint8_t buffer[5];
 	uint32_t len;
+
+	//debug1("r %s %d %d %d %p", osThreadGetName(osThreadGetId()), partition, addr, size, dst);
+	//debug1("%s: %d", osThreadGetName(osThreadGetId()), osThreadGetStackSpace(osThreadGetId()));
 
 	if (partition >= SPI_FLASH_PARTITIONS_COUNT)
 	{
