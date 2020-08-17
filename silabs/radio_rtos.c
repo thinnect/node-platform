@@ -290,7 +290,7 @@ comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 
     comms_am_create((comms_layer_t *)&m_radio_iface, m_radio_address, radio_send, radio_start, radio_stop);
 
-    const osThreadAttr_t radio_thread_attr = { .name = "radio" };
+    const osThreadAttr_t radio_thread_attr = { .name = "radio", .stack_size = 3072 };
     m_radio_thread_id = osThreadNew(radio_thread, NULL, &radio_thread_attr);
 
     m_state = ST_OFF; // Radio initialized, but not turned ON yet
