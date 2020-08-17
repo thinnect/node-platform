@@ -9,6 +9,8 @@
  */
 #include "basic_rtos_filesystem_setup.h"
 
+#include "cmsis_os2.h"
+
 #include "retargetspi.h"
 #include "spi_flash.h"
 #include "fs.h"
@@ -32,6 +34,10 @@ void basic_rtos_filesystem_setup ()
 {
     // SPI for dataflash
     RETARGET_SpiInit();
+    
+    // Wake dataflash from deep sleep
+    RETARGET_SpiTransferHalf(0, "\xAB", 1, NULL, 0);
+    osDelay(50);
 
     // Get dataflash chip ID
     uint8_t jedec[4] = {0};
