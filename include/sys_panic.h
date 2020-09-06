@@ -32,7 +32,7 @@ extern const char * g_panic_str;
 // What to do when panic state has been recorded.
 // !!! Currently only supports ARM-CortexM !!!
 #ifndef NDEBUG
-
+    #warning sys_panic_action == while(1);
     // Halt the device - disable interrupts and loop forever
     #define sys_panic_action()                                  \
     ({                                                          \
