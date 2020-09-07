@@ -1227,6 +1227,12 @@ static void handle_radio_tx (uint32_t flags)
                 }
             }
         }
+        // Sending has failed for some unexpected reason -----------------------
+        else if (flags & RDFLG_RAIL_SEND_FAIL)
+        {
+            warn1("RAIL FAIL");
+            signal_send_done(COMMS_FAIL);
+        }
         // Sending has failed in some generic way ------------------------------
         else if (flags & RDFLG_RADIO_SEND_FAIL)
         {
