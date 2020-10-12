@@ -16,8 +16,19 @@
 
 static inline bool platform_eui(uint8_t eui[IEEE_EUI64_LENGTH])
 {
-	uint8_t zeros[3] = {0};
-#ifdef EFR32_SERIES2
+	uint8_t zeros[IEEE_EUI64_LENGTH] = {0};
+	uint8_t buff[IEEE_EUI64_LENGTH] = {[0 ... IEEE_EUI64_LENGTH-1] = 0xFF};
+
+#ifdef EFR32_SERIES1
+	eui[0] = DEVINFO->EUI48H >> 8;
+	eui[1] = DEVINFO->EUI48H >> 0;
+	eui[2] = DEVINFO->EUI48L >> 24;
+	eui[3] = 0xFF;
+	eui[4] = 0xFE;
+	eui[5] = DEVINFO->EUI48L >> 16;
+	eui[6] = DEVINFO->EUI48L >> 8;
+	eui[7] = DEVINFO->EUI48L >> 0;
+#elif defined EFR32_SERIES2
 	eui[0] = DEVINFO->EUI64H >> 24;
 	eui[1] = DEVINFO->EUI64H >> 16;
 	eui[2] = DEVINFO->EUI64H >> 8;
@@ -27,17 +38,10 @@ static inline bool platform_eui(uint8_t eui[IEEE_EUI64_LENGTH])
 	eui[6] = DEVINFO->EUI64L >> 8;
 	eui[7] = DEVINFO->EUI64L >> 0;
 #else
-	eui[0] = DEVINFO->EUI48H >> 8;
-	eui[1] = DEVINFO->EUI48H >> 0;
-	eui[2] = DEVINFO->EUI48L >> 24;
-	eui[3] = 0xFF;
-	eui[4] = 0xFE;
-	eui[5] = DEVINFO->EUI48L >> 16;
-	eui[6] = DEVINFO->EUI48L >> 8;
-	eui[7] = DEVINFO->EUI48L >> 0;
+	#error "Define EFR32_SERIES1 or EFR32_SERIES2"
 #endif
 
-	if (!memcmp(eui, zeros, 3) || !memcmp(&eui[5], zeros, 3))
+	if (!memcmp(eui, zeros, IEEE_EUI64_LENGTH) || !memcmp(eui, buff, IEEE_EUI64_LENGTH))
 	{
 		return false;
 	}
