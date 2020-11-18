@@ -249,7 +249,7 @@ static void ldma_thread (void* argument)
 
 int logger_ldma_init ()
 {
-	const osThreadAttr_t ldma_thread_attr = { .name = "ldma", stack_size = 340 };
+	const osThreadAttr_t ldma_thread_attr = { .name = "ldma", .stack_size = 340 };
 	m_ldma_idle = true;
 	m_uart_active = false;
 	m_log_mutex = osMutexNew(NULL);
