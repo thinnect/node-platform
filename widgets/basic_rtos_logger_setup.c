@@ -21,30 +21,34 @@
 #include "logger_fwrite.h"
 #endif//LOGGER_*
 
+static platform_mutex_t m_log_mutex;
+
 void basic_noos_logger_setup ()
 {
     USART_Reset(RETARGET_UART);
     RETARGET_SerialInit();
-    log_init(BASE_LOG_LEVEL, &logger_fwrite_basic, NULL);
+    log_init(BASE_LOG_LEVEL, &logger_fwrite_basic, NULL, NULL);
 }
 
 void basic_rtos_logger_setup ()
 {
     osDelay(1); // Do a small delay to clear buffers
 
+    m_log_mutex = platform_mutex_new("log");
+
     #if defined(LOGGER_LDMA)
         logger_ldma_init();
         #if defined(LOGGER_TIMESTAMP)
-            log_init(BASE_LOG_LEVEL, &logger_ldma, &osCounterGetMilli);
+            log_init(BASE_LOG_LEVEL, &logger_ldma, &osCounterGetMilli, m_log_mutex);
         #else
-            log_init(BASE_LOG_LEVEL, &logger_ldma, NULL);
+            log_init(BASE_LOG_LEVEL, &logger_ldma, NULL, m_log_mutex);
         #endif
     #elif defined(LOGGER_FWRITE)
         logger_fwrite_init();
         #if defined(LOGGER_TIMESTAMP)
-            log_init(BASE_LOG_LEVEL, &logger_fwrite, &osCounterGetMilli);
+            log_init(BASE_LOG_LEVEL, &logger_fwrite, &osCounterGetMilli, m_log_mutex);
         #else
-            log_init(BASE_LOG_LEVEL, &logger_fwrite, NULL);
+            log_init(BASE_LOG_LEVEL, &logger_fwrite, NULL, m_log_mutex);
         #endif
     #else
         #warning "No LOGGER_* has been defined!"
