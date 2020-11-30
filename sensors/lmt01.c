@@ -15,14 +15,18 @@
 #include "em_acmp.h"
 #include "em_prs.h"
 
+#include "loglevels.h"
+#define __MODUUL__ "lmt01"
+#define __LOG_LEVEL__ (LOG_LEVEL_lmt01 & BASE_LOG_LEVEL)
+#include "log.h"
 #ifdef _SILICON_LABS_32B_SERIES_2
 
 #define ___LMT01_STRINGIFY_PRE2(__p1, __p2)             __p1 ## __p2
 #define ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3)       __p1 ## __p2 ## __p3
 #define ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4) __p1 ## __p2 ## __p3 ## __p4
-#define ___LMT01_STRINGIFY2(__p1, __p2)                 ___LMT01_STRINGIFY_PRE2(__p1, __p2) 
-#define ___LMT01_STRINGIFY3(__p1, __p2, __p3)           ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3) 
-#define ___LMT01_STRINGIFY4(__p1, __p2, __p3, __p4)     ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4) 
+#define ___LMT01_STRINGIFY2(__p1, __p2)                 ___LMT01_STRINGIFY_PRE2(__p1, __p2)
+#define ___LMT01_STRINGIFY3(__p1, __p2, __p3)           ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3)
+#define ___LMT01_STRINGIFY4(__p1, __p2, __p3, __p4)     ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4)
 
 #define LMT01_ACMP_DEV                    (___LMT01_STRINGIFY2(ACMP, LMT01_ACMP_DEV_INDEX))
 #define LMT01_ACMP_CLOCK                  (___LMT01_STRINGIFY2(cmuClock_ACMP, LMT01_ACMP_DEV_INDEX))
@@ -82,6 +86,7 @@ int32_t lmt01_read_temperature()
 	while (lmt01_oneshot_timer_active());
 
 	counter = lmt01_counter_timer_value();
+	debug1("Cnt val: %d", counter);
 	temp = ((counter * 10) / 16) - 500;
 	return temp;
 }
@@ -96,7 +101,7 @@ static void lmt01_acmp_init()
 
 	ACMP_Init_TypeDef acmpInit = ACMP_INIT_DEFAULT;
 	ACMP_Init(LMT01_ACMP_DEV, &acmpInit);
-	ACMP_ChannelSet(LMT01_ACMP_DEV, acmpInputVREFDIV1V25, LMT01_ACMP_INPUT);
+	ACMP_ChannelSet(LMT01_ACMP_DEV, acmpInputVSENSE01DIV4, LMT01_ACMP_INPUT);
 	if (LMT01_ACMP_INPUT_GPIO_PORT == gpioPortA)
 	{
 		if(LMT01_ACMP_INPUT_PIN & 1)
@@ -228,6 +233,7 @@ static bool lmt01_oneshot_timer_active()
 
 #else // _SILICON_LABS_32B_SERIES_2
 #warning "LMT01 driver is not supported on series 1."
+
 void lmt01_init()
 {
 }
@@ -236,5 +242,5 @@ int32_t lmt01_read_temperature()
 {
 	return -500;
 }
-#endif // _SILICON_LABS_32B_SERIES_2
 
+#endif // _SILICON_LABS_32B_SERIES_2
