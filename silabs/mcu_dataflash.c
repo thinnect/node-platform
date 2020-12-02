@@ -163,7 +163,7 @@ int32_t mcu_dataflash_erase (int partition, uint32_t addr, uint32_t size)
 	if (0 == addr % FLASH_PAGE_SIZE) // Check alignment
 	{
 		MSC_Init();
-		for (uint32_t offset=addr; offset < addr+size; offset+=FLASH_PAGE_SIZE)
+		for (uint32_t offset = addr; offset < addr + size; offset += FLASH_PAGE_SIZE)
 		{
 			info1("erase %"PRIu32, offset);
 			CORE_DECLARE_IRQ_STATE;
