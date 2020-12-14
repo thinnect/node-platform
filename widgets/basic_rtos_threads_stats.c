@@ -32,15 +32,16 @@ void basic_rtos_threads_stats (void)
     pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t));
     if (pxTaskStatusArray != NULL)
     {
-        debug1("ID\t WtrMrk\t State\t Prio\t Name");
+        debug1("ID\tHiWtrMrk\tState\tPrio\tName");
         /* Generate raw status information about each task. */
         uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, NULL);
 
         for (x=0; x<uxArraySize; x++)
         {
-           debug1("%"PRIu32"\t %"PRIu32"\t %"PRIu16"\t %"PRIu32"\t %s\t",
+           debug1("%"PRIu32"\t%3"PRIu32"/%4"PRIu32"\t%"PRIu16"\t%"PRIu32"\t%s\t",
                                         pxTaskStatusArray[x].xTaskNumber,
                                         pxTaskStatusArray[x].usStackHighWaterMark,
+                                        pxTaskStatusArray[x].usStackHighWaterMark*4,
                                         pxTaskStatusArray[x].eCurrentState,
                                         pxTaskStatusArray[x].uxCurrentPriority,
                                         pxTaskStatusArray[x].pcTaskName);
