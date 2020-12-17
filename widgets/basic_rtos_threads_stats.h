@@ -7,6 +7,8 @@
 #ifndef BASIC_RTOS_THREADS_STATS_H_
 #define BASIC_RTOS_THREADS_STATS_H_
 
-void basic_rtos_threads_stats();
+void basic_rtos_threads_stats ();
+
+void basic_rtos_heap_stats ();
 
 #endif//BASIC_RTOS_THREADS_STATS_H_

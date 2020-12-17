@@ -50,3 +50,18 @@ void basic_rtos_threads_stats (void)
         vPortFree(pxTaskStatusArray);
     }
 }
+
+
+void basic_rtos_heap_stats (void)
+{
+    HeapStats_t hs;
+    vPortGetHeapStats(&hs);
+    debug1("hs s:%d lf:%d sf:%d nf:%d mbf:%d na:%d nf:%d",
+        (int)hs.xAvailableHeapSpaceInBytes,
+        (int)hs.xSizeOfLargestFreeBlockInBytes,
+        (int)hs.xSizeOfSmallestFreeBlockInBytes,
+        (int)hs.xNumberOfFreeBlocks,
+        (int)hs.xMinimumEverFreeBytesRemaining,
+        (int)hs.xNumberOfSuccessfulAllocations,
+        (int)hs.xNumberOfSuccessfulFrees);
+}
