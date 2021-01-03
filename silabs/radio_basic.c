@@ -17,6 +17,28 @@
 #include "rail_assert_error_codes.h"
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
+
+#ifndef RADIO_INTERRUPT_PRIORITY
+#error "RADIO_INTERRUPT_PRIORITY not defined"
+#endif//RADIO_INTERRUPT_PRIORITY
+
+#ifndef DEFAULT_RAIL_TX_POWER_MODE
+#define DEFAULT_RAIL_TX_POWER_MODE 'N'
+#endif//DEFAULT_RAIL_TX_POWER_MODE
+
+#if DEFAULT_RAIL_TX_POWER_MODE=='L'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_LP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_LP
+#elif DEFAULT_RAIL_TX_POWER_MODE=='M'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_MP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_MP
+#elif DEFAULT_RAIL_TX_POWER_MODE=='H'
+    #pragma message "RAIL_TX_POWER_MODE_2P4GIG_HP"
+    #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_HP
+#else
+    #error Select default PA by defining CFLAGS+=-DDEFAULT_RAIL_TX_POWER_MODE="'[H/M/L]'", note the proper use of quotes (="'X'").
+#endif
+
 #include "mist_comm_iface.h"
 #include "mist_comm_am.h"
 
@@ -29,7 +51,7 @@
 
 uint16_t radio_address;
 static uint16_t radio_pan_id;
-static uint16_t radio_channel;
+static uint8_t radio_channel;
 comms_layer_am_t radio_iface;
 
 static bool radio_sending;
@@ -55,7 +77,7 @@ static void radio_rail_rfready_cb(RAIL_Handle_t radio_rail_handle);
 static comms_error_t radio_send(comms_layer_iface_t *iface, comms_msg_t *msg, comms_send_done_f *send_done, void *user);
 static comms_send_done_f *radio_send_done;
 
-comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
+comms_layer_t* radio_init(uint8_t channel, uint16_t pan_id, uint16_t address) {
 	radio_channel = channel;
 	radio_pan_id = pan_id;
 	radio_address = address;
@@ -72,6 +94,7 @@ comms_layer_t* radio_init(uint16_t channel, uint16_t pan_id, uint16_t address) {
 
 RAIL_Handle_t radio_rail_init() {
 	RAIL_Handle_t handle;
+	RAIL_Status_t rs;
 
 	static RAIL_Config_t rail_config = {
 		.eventsCallback = &radio_rail_event_cb
@@ -109,8 +132,6 @@ RAIL_Handle_t radio_rail_init() {
 		.txMethod = PACKET_MODE,
 		.rxMethod = PACKET_MODE,
 	};
-	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
-	RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
 
 	radio_restart = false;
 	radio_send_done_flag = false;
@@ -118,7 +139,7 @@ RAIL_Handle_t radio_rail_init() {
 	radio_send_fail = false;
 	rx_fail = 0;
 
-	int32_t priority = 3; // not shifted, but once shifted = 01100000
+	int32_t priority = RADIO_INTERRUPT_PRIORITY; // not shifted
 	NVIC_SetPriority(FRC_PRI_IRQn, priority);
 	NVIC_SetPriority(FRC_IRQn, priority);
 	NVIC_SetPriority(MODEM_IRQn, priority);
@@ -128,15 +149,21 @@ RAIL_Handle_t radio_rail_init() {
 	NVIC_SetPriority(AGC_IRQn, priority);
 	NVIC_SetPriority(PROTIMER_IRQn, priority);
 	NVIC_SetPriority(SYNTH_IRQn, priority);
-	//NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
+    #ifdef RFSENSE_IRQn
+    NVIC_SetPriority(RFSENSE_IRQn, priority); // Not supported on Series2 ?
+    #endif//RFSENSE_IRQn
+    #ifdef PRORTC_IRQn
+    NVIC_SetPriority(PRORTC_IRQn, priority); // Not supported on some chips ?
+    #endif
 
 	handle = RAIL_Init(&rail_config, &radio_rail_rfready_cb);
 	if(handle == NULL) {
-		// printf("RAIL INIT ERROR\n");
+		err1("ri");
 		return(NULL);
 	}
 
-	// Put the variables declared above into the appropriate structure
+	//RAIL_DECLARE_TX_POWER_VBAT_CURVES(piecewiseSegments, curvesSg, curves24Hp, curves24Lp);
+	RAIL_DECLARE_TX_POWER_VBAT_CURVES_ALT;
   	//RAIL_TxPowerCurvesConfig_t txPowerCurvesConfig = { curves24Hp, curvesSg, curves24Lp, piecewiseSegments };
   	RAIL_TxPowerCurvesConfigAlt_t txPowerCurvesConfig = RAIL_DECLARE_TX_POWER_CURVES_CONFIG_ALT;
 
@@ -145,31 +172,35 @@ RAIL_Handle_t radio_rail_init() {
 	//RAIL_InitTxPowerCurves(&txPowerCurvesConfig);
 	RAIL_InitTxPowerCurvesAlt(&txPowerCurvesConfig);
 
-	RAIL_EnablePaCal(1);
+	// Enabling will ensure that the PA power remains constant chip-to-chip.
+	RAIL_EnablePaCal(true);
 
-	// Declare the structure used to configure the PA
-	//RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 1800, 10 };
-	RAIL_TxPowerConfig_t txPowerConfig = { RAIL_TX_POWER_MODE_2P4_HP, 3300, 10 };
+	// PA configuration
+    static RAIL_TxPowerConfig_t txPowerConfig = { DEFAULT_RAIL_TX_POWER_MODE_2P4GIG, 3300, 10 };
 
-	if(RAIL_ConfigTxPower(handle, &txPowerConfig) != RAIL_STATUS_NO_ERROR) {
-		// printf("TX POWER CONF ERROR\n");
-		// Error: The PA could not be initialized due to an improper configuration.
-		// Please ensure your configuration is valid for the selected part.
-		return(NULL);
-	}
+    if (RAIL_STATUS_NO_ERROR != RAIL_ConfigTxPower(handle, &txPowerConfig)) {
+        err1("cpwr %d", (int)DEFAULT_RAIL_TX_POWER_MODE);
+        // Error: The PA could not be initialized due to an improper configuration.
+        // Please ensure your configuration is valid for the selected part.
+        return NULL;
+    }
 
-	RAIL_TxPower_t power = DEFAULT_RFPOWER_DBM * 10; // RAIL uses deci-dBm
-	RAIL_GetTxPowerConfig(radio_rail_handle, &txPowerConfig);
-	RAIL_TxPowerLevel_t powerLevel = RAIL_ConvertDbmToRaw(radio_rail_handle, txPowerConfig.mode, power);
+    rs = RAIL_SetTxPowerDbm(handle, DEFAULT_RFPOWER_DBM * 10); // RAIL uses deci-dBm
+    if (RAIL_STATUS_NO_ERROR != rs)
+    {
+        err1("spwr %d", (int)DEFAULT_RAIL_TX_POWER_MODE);
+        return NULL;
+    }
 
-	RAIL_SetTxPower(handle, powerLevel);
-
-	// Initialize Radio Calibrations
+    // Initialize Radio Calibrations
 	RAIL_ConfigCal(handle, RAIL_CAL_ALL);
 
-	// Load the channel configuration for the generated radio settings
-	//RAIL_ConfigChannels(handle, channelConfigs[0], &radio_rail_radio_config_changed_cb);
-	(void)radio_rail_radio_config_changed_cb; // disabled, because crashes Series2 startup
+    // Configure channels
+    if (0 != RAIL_ConfigChannels(handle, NULL, &radio_rail_radio_config_changed_cb))
+    {
+        err1("cch");
+        return NULL;
+    }
 
 	RAIL_Events_t events = RAIL_EVENT_CAL_NEEDED
 	                     | RAIL_EVENT_RX_ACK_TIMEOUT
@@ -184,14 +215,43 @@ RAIL_Handle_t radio_rail_init() {
 	radio_sending = false;
 	RAIL_ConfigData(handle, &data_config);
 
-	RAIL_IEEE802154_Config2p4GHzRadio(handle);
-	RAIL_IEEE802154_Init(handle, &ieee802154_config);
+    #ifdef _SILICON_LABS_32B_SERIES_2
+        //   - RF2G2_IO1: 0
+        //   - RF2G2_IO2: 1
+        static RAIL_AntennaConfig_t antennaConfig = { false }; // Zero out structure
+        #ifdef DEFAULT_ANTENNA_PATH_IO2
+            antennaConfig.defaultPath = 1;
+        #else
+            antennaConfig.defaultPath = 0;
+        #endif
+        debug1("cant %d", (int)antennaConfig.defaultPath);
+        if (RAIL_ConfigAntenna(handle, &antennaConfig) != RAIL_STATUS_NO_ERROR)
+        {
+            err1("cant");
+            return NULL;
+        }
+        debug4("cant %d");
+    #endif//_SILICON_LABS_32B_SERIES_2
+
+    if (RAIL_STATUS_NO_ERROR != RAIL_IEEE802154_Init(handle, &ieee802154_config)) {
+        err1("154i");
+        return NULL;
+    }
+    debug4("154i");
+
+    RAIL_Status_t err = RAIL_IEEE802154_Config2p4GHzRadio(handle);
+    if (RAIL_STATUS_NO_ERROR != err) {
+        err1("154c %d", (int)err);
+        return NULL;
+    }
+    debug4("154c");
+
 	RAIL_IEEE802154_SetPanId(handle, radio_pan_id, 0);
 	RAIL_IEEE802154_SetShortAddress(handle, radio_address, 0);
 
 	RAIL_Idle(handle, RAIL_IDLE, 1);
 	if(RAIL_StartRx(handle, radio_channel, NULL) != RAIL_STATUS_NO_ERROR) {
-		err1("StartRx");
+		err1("srx");
 	}
 	return handle;
 }
@@ -204,7 +264,7 @@ void radio_reenable() {
 	RAIL_StartRx(radio_rail_handle, radio_channel, NULL);
 }
 
-void radio_reenable_channel_panid(uint16_t channel, uint16_t pan_id) {
+void radio_reenable_channel_panid(uint8_t channel, uint16_t pan_id) {
 	radio_channel = channel;
 	radio_pan_id = pan_id;
 	RAIL_IEEE802154_SetPanId(radio_rail_handle, pan_id, 0);

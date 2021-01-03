@@ -87,7 +87,7 @@
 //------------------------------------------------------------------------------
 
 // Count the time spent in sleep, milliseconds
-static uint32_t ulTotalSleepTime = 0;
+static uint64_t ulTotalSleepTime = 0;
 
 static TickType_t xMaximumPossibleSuppressedTicks = 0;
 
@@ -239,7 +239,7 @@ void vLowPowerSleepTimerSetFreq (uint32_t freq)
 /**
  * Get total time spent in sleep.
  */
-uint32_t ulLowPowerSleepTime ()
+uint64_t ulLowPowerSleepTime ()
 {
     return ulTotalSleepTime;
 }

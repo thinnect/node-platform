@@ -56,6 +56,6 @@ void vLowPowerSleepTimerSetFreq(uint32_t freq);
  * Get the time spent in sleep - milliseconds.
  * @return Time spent sleeping.
  */
-uint32_t ulLowPowerSleepTime();
+uint64_t ulLowPowerSleepTime();
 
 #endif//LPTSLEEP_H_

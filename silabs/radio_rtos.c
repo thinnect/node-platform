@@ -152,7 +152,7 @@ static uint32_t m_rail_sent_timestamp;
 static uint8_t m_csma_retries;
 
 // Time spent if OFF state since radio was initialized
-static uint32_t m_sleep_time;
+static uint64_t m_sleep_time;
 
 // When the radio was stopped last
 static uint32_t m_stop_timestamp;
@@ -253,7 +253,7 @@ static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
 };
 
 
-comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
+comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 {
     m_radio_channel_configured = channel;
     m_radio_pan_id = pan_id;
@@ -290,7 +290,7 @@ comms_layer_t* radio_init (uint16_t channel, uint16_t pan_id, uint16_t address)
 
     comms_am_create((comms_layer_t *)&m_radio_iface, m_radio_address, radio_send, radio_start, radio_stop);
 
-    const osThreadAttr_t radio_thread_attr = { .name = "radio" };
+    const osThreadAttr_t radio_thread_attr = { .name = "radio", .stack_size = 3072 };
     m_radio_thread_id = osThreadNew(radio_thread, NULL, &radio_thread_attr);
 
     m_state = ST_OFF; // Radio initialized, but not turned ON yet
@@ -328,7 +328,7 @@ void radio_set_promiscuous (bool promiscuous)
 
 
 // Set radio channel
-bool radio_set_channel (uint16_t channel)
+bool radio_set_channel (uint8_t channel)
 {
     if ((channel >= 11) && (channel <= 26))
     {
@@ -339,7 +339,7 @@ bool radio_set_channel (uint16_t channel)
 }
 
 // Get radio channel.
-uint16_t radio_get_channel ()
+uint8_t radio_get_channel ()
 {
     return m_radio_channel_current;
 }
@@ -532,8 +532,8 @@ static RAIL_Status_t radio_rail_configure (RAIL_Handle_t handle)
     }
 
     #ifdef _SILICON_LABS_32B_SERIES_2
-        //   - RF2G2_IO1: 0
-        //   - RF2G2_IO2: 1
+        //   - RF2G4_IO1: 0
+        //   - RF2G4_IO2: 1
         static RAIL_AntennaConfig_t antennaConfig = { false }; // Zero out structure
         #ifdef DEFAULT_ANTENNA_PATH_IO2
             antennaConfig.defaultPath = 1;
@@ -609,7 +609,7 @@ RAIL_Status_t RAILCb_SetupRxFifo(RAIL_Handle_t railHandle)
 }
 //------------------------------------------------------------------------------
 
-uint32_t radio_sleep_time()
+uint64_t radio_sleep_time()
 {
     return m_sleep_time;
 }
@@ -1226,6 +1226,12 @@ static void handle_radio_tx (uint32_t flags)
                     signal_send_done(COMMS_EBUSY);
                 }
             }
+        }
+        // Sending has failed for some unexpected reason -----------------------
+        else if (flags & RDFLG_RAIL_SEND_FAIL)
+        {
+            warn1("RAIL FAIL");
+            signal_send_done(COMMS_FAIL);
         }
         // Sending has failed in some generic way ------------------------------
         else if (flags & RDFLG_RADIO_SEND_FAIL)

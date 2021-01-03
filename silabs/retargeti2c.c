@@ -65,6 +65,9 @@ void RETARGET_I2CDeinit() {
 	GPIO_PinModeSet(RETARGET_I2C_SDA_PORT, RETARGET_I2C_SDA_PIN, gpioModeDisabled, 0);
 	GPIO_PinModeSet(RETARGET_I2C_SCL_PORT, RETARGET_I2C_SCL_PIN, gpioModeDisabled, 0);
 
+	platform_mutex_delete(i2c_transaction_mutex);
+	platform_mutex_delete(i2c_mutex);
+
 	// I2C power off
 	#ifdef RETARGET_I2C_PWR_PORT
 		GPIO_PinModeSet(RETARGET_I2C_PWR_PORT, RETARGET_I2C_PWR_PIN, gpioModeDisabled, 0);

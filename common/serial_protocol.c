@@ -15,6 +15,7 @@
 #include "cmsis_os2.h"
 
 #include <string.h>
+#include <inttypes.h>
 
 #include "loglevels.h"
 #define __MODUUL__ "serp"
