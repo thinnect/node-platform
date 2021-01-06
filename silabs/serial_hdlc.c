@@ -118,7 +118,7 @@ void serial_hdlc_init (serial_hdlc_receive_f * rcvf, void* rcvr)
 
 void serial_hdlc_enable ()
 {
-    const osThreadAttr_t thread_attr = { .name = "ser" };
+    const osThreadAttr_t thread_attr = { .name = "ser", .stack_size = 2048 };
     osThreadNew(serial_hdlc_thread, NULL, &thread_attr);
 
     // Clear any pending interrupts
@@ -126,7 +126,7 @@ void serial_hdlc_enable ()
     NVIC_ClearPendingIRQ(SERIAL_HDLC_IRQn);
 
     // set priority and enable interupts
-    NVIC_SetPriority(SERIAL_HDLC_IRQn, 3); // not shifted, but once shifted = 01100000 -> TODO not a magic number
+    NVIC_SetPriority(SERIAL_HDLC_IRQn, SERIAL_HDLC_IRQ_PRIORITY);
     USART_IntEnable(SERIAL_HDLC_UART, USART_IF_RXDATAV);
     NVIC_EnableIRQ(SERIAL_HDLC_IRQn);
 
