@@ -72,7 +72,6 @@ extern void hal_rom_boot_init(void);
 
 static uint8_t m_rxBuf[127] ={0};
 static uint16_t volatile irqflag = 0;
-static uint16_t m_plen = 0;
 static uint32_t m_foot[2] = {0};
 static uint8_t  m_packet_len = 0;
 static uint16_t m_pktLen = 0;
@@ -83,15 +82,12 @@ static osMutexId_t m_radio_mutex;
 static radio_config_t m_config = {0};
 static uint8_t m_radio_tx_num;
 static bool radio_tx_wait_ack;
-static bool m_radio_busy;
 static RadioState_t m_state = ST_UNINITIALIZED;
 
 static osTimerId_t m_send_timeout_timer;
 static osTimerId_t m_resend_timer;
 
 static uint32_t m_radio_send_timestamp;
-static uint32_t m_rail_send_timestamp;
-static uint32_t m_rail_sent_timestamp;
 
 
 static void zb_hw_go(void)
@@ -153,6 +149,7 @@ static void zb_hw_set_stx(void)
 		m_config.mode = TX_ONLY;
 }
 
+/*
 static void zb_hw_set_trx(uint32_t rxTimeOutUs) 
 {
     ll_hw_set_rx_timeout(rxTimeOutUs);
@@ -160,6 +157,7 @@ static void zb_hw_set_trx(uint32_t rxTimeOutUs)
     ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL
 		m_config.mode = TX_RX_MODE;
 }
+*/
 
 static void zb_set_channel(uint8_t chn)
 {
@@ -319,7 +317,6 @@ comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms
             qn->next = qm;
         }
 
-        m_radio_busy = true; // If it wasn't busy before, it is now
         osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
 
         info3("snd %p \r\n", msg);
@@ -336,10 +333,12 @@ comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms
     return err;
 }
 
+/*
 static void rf_wakeup_handler(void){
   NVIC_SetPriority((IRQn_Type)4, IRQ_PRIO_REALTIME);
   NVIC_SetPriority((IRQn_Type)20, IRQ_PRIO_HIGH);
 }
+*/
 
 static void hal_rfphy_init(void)
 {
@@ -367,20 +366,25 @@ static void hal_rfphy_init(void)
 comms_error_t radio_stop(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
 	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STOP);
+	return COMMS_SUCCESS;
 }
 
 comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
 	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_START);
+	return COMMS_SUCCESS;
 }
+
 static void radio_send_timeout_cb (void * argument)
 {
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND_TIMEOUT);
 }
+
 static void radio_resend_timeout_cb(void * argument)
 {
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_RESEND);
 }
+
 static void radio_send_message (comms_msg_t * msg)
 {
     __align(4) static uint8_t buffer[160] = {0};
@@ -473,7 +477,6 @@ static void radio_send_message (comms_msg_t * msg)
 		
 
     m_radio_send_timestamp = radio_timestamp();
-    m_rail_send_timestamp = m_rail_sent_timestamp /*= RAIL_GetTime()*/;
 
 		zb_hw_stop();
 		
@@ -667,13 +670,15 @@ static void handle_radio_tx (uint32_t flags)
         }
     }
 }
+
+/*
 static void handle_radio_rx()
 {
 		mac_frame_t rxh;
     // RX processing -----------------------------------------------------------
     if (osOK == osMessageQueueGet(m_config.recvQueue, &rxh, NULL, 0))
     {
-				/*
+				
         RAIL_RxPacketInfo_t packetInfo = {0};
         RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
         if (packetHandle != RAIL_RX_PACKET_HANDLE_INVALID)
@@ -718,12 +723,12 @@ static void handle_radio_rx()
                     warnb1("rst", &rst, sizeof(RAIL_Status_t));
                     sys_panic("release");
                 }
-								*/
+								
 								uint8_t buffer[256] = {0};
                 uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
-                uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+                //uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
 
-/*
+
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
                 {
                     warn3("same seqNum:%02"PRIX8, buffer[3]);
@@ -812,13 +817,14 @@ static void handle_radio_rx()
             else LOG("rxd");
         }
         else LOG("rxi");
-				*/
+				
 
         // There might be more packets in the queue, but don't let RX swamp the
         // radio - defer it to the next run through the loop
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_MORE);
     }
 }
+*/
 
 static void radio_send_next()
 {
@@ -846,22 +852,22 @@ static void radio_task(void *arg)
 	while(1)
 	{
 		
-		bool running = false;
+		//bool running = false;
 		
 		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 		uint32_t state;
 		
 		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever))
         state = m_state;
-        m_radio_busy = (radio_msg_sending != NULL)||(radio_msg_queue_head != NULL);
         osMutexRelease(m_radio_mutex);
 
+		 /*
         if (ST_STARTING == state)
         {
             //start_radio_now();
             running = true;
         }
-
+		*/
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
@@ -897,7 +903,7 @@ static void radio_task(void *arg)
             if (ST_STOPPING == state)
             {
                 zb_hw_stop(); // Will return queued messages
-                running = false;
+                //running = false;
             }
             else
             {
