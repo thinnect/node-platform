@@ -94,12 +94,12 @@ static void zb_hw_go(void)
 {
     *(volatile uint32_t *)(LL_HW_BASE+ 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
     *(volatile uint32_t *)(LL_HW_BASE+ 0x0c) = 0x0001;            //mask irq :only use mode done
-    *(volatile uint32_t *)(LL_HW_BASE+ 0x00) = 0x0001;            //trig 
+    *(volatile uint32_t *)(LL_HW_BASE+ 0x00) = 0x0001;            //trig
 
     uint8_t rfChnIdx = PHY_REG_RD(0x400300b4)&0xff;
 
-    
-    if(rfChnIdx<2) 
+
+    if(rfChnIdx<2)
     {
         rfChnIdx=2;
     }
@@ -107,9 +107,9 @@ static void zb_hw_go(void)
     {
         rfChnIdx=80;
     }
-		rf_tpCal_cfg(rfChnIdx);    
+		rf_tpCal_cfg(rfChnIdx);
 
-#if (DBG_BUILD_LL_TIMING)    
+#if (DBG_BUILD_LL_TIMING)
     hal_gpio_write(DBG_PIN_LL_HW_TRIG, 1);
     hal_gpio_write(DBG_PIN_LL_HW_TRIG, 0);
 #endif
@@ -136,21 +136,21 @@ static void zb_hw_set_srx(uint32_t rxTimeOutUs)
 {
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_srx();
-    ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL   
-	
+    ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL
+
 		m_config.mode = RX_ONLY;
 }
 
 static void zb_hw_set_stx(void)
 {
     ll_hw_set_stx();
-    ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL  
-	
+    ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL
+
 		m_config.mode = TX_ONLY;
 }
 
 /*
-static void zb_hw_set_trx(uint32_t rxTimeOutUs) 
+static void zb_hw_set_trx(uint32_t rxTimeOutUs)
 {
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_trx();
@@ -179,11 +179,11 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
     ll_hw_get_rfifo_info(&rdPtr,&wrPtr,&rdDepth);
 
     if(rdDepth>0){
-        
+
         *p_rxPkt++ = *(volatile uint32_t *)(LL_HW_RFIFO);
 
         blen      = rxPkt[0];                        //get the byte length for header
-        wlen    = 1+ ( (blen) >>2 );             //blen included the 2byte crc 
+        wlen    = 1+ ( (blen) >>2 );             //blen included the 2byte crc
 
         while(p_rxPkt<(uint32_t *)rxPkt+wlen){
             *p_rxPkt++ = *(volatile uint32_t *)(LL_HW_RFIFO);
@@ -193,10 +193,10 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
         *pktFoot1     = *(volatile uint32_t *)(LL_HW_RFIFO);
 
         *pktLen     = blen+1;
-                
+
 
         return wlen;
-    
+
     }else{
 
         rxPkt[0]  = 0;
@@ -205,8 +205,8 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
         *pktLen   = 0;
         return 0;
     }
-    
-    
+
+
 
 }
 
@@ -229,7 +229,7 @@ void ZBRFPHY_IRQHandler(void)
 								m_packet_len = zbll_hw_read_rfifo_zb(&m_rxBuf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
 								if(m_packet_len>0)
 								{
-							
+
 										mac_frame_t* frame = (mac_frame_t*)&m_rxBuf[1];
 										if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
 										{
@@ -245,8 +245,8 @@ void ZBRFPHY_IRQHandler(void)
 								}
 						}
 					}
-						
-					
+
+
 					if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY)
 					{
 						 LOG("Send done\r\n");
@@ -255,9 +255,9 @@ void ZBRFPHY_IRQHandler(void)
 						 m_config.mode = RX_ONLY;
 						 zb_hw_set_srx(0);
 					}
-					
+
 				}
-				
+
 									if(irqflag & LIRQ_CERR)
 					{
 						LOG("Error occured");
@@ -266,18 +266,18 @@ void ZBRFPHY_IRQHandler(void)
 					{
 						LOG("Error Occured2");
 					}
-						
-				
-				
-				
-			ll_hw_clr_irq(); 
-				
+
+
+
+
+			ll_hw_clr_irq();
+
 		 HAL_EXIT_CRITICAL_SECTION();
 }
 
 comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms_send_done_f* cb, void* user/*uint8_t* data, uint16_t len, uint16_t dst*/)
 {
-	
+
 		comms_error_t err = COMMS_FAIL;
 
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
@@ -348,7 +348,7 @@ static void hal_rfphy_init(void)
     g_rfPhyPktFmt   = PKT_FMT_ZIGBEE;
     //============config RF Frequency Offset
     g_rfPhyFreqOffSet = RF_PHY_FREQ_FOFF_20KHZ;
-  
+
     XTAL16M_CAP_SETTING(0x09);
     XTAL16M_CURRENT_SETTING(0x01);
 
@@ -424,8 +424,8 @@ static void radio_send_message (comms_msg_t * msg)
         radio_tx_wait_ack = false;
         buffer[1] = 0x41;
     }
-		
-		
+
+
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
@@ -463,33 +463,31 @@ static void radio_send_message (comms_msg_t * msg)
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
-		
+
     //RAIL_WriteTxFifo(m_rail_handle, buffer, count, true);
     //RAIL_SetTxFifo(m_rail_handle, buffer, total, sizeof(buffer));
-		
+
 	  uint8_t crcCode[2] = {0};
 		uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-		
+
 		zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
 
     buffer[1 + 11 + count + 1] = crcCode[0];
     buffer[1 + 11 + count + 2] = crcCode[1];
-		
+
 
     m_radio_send_timestamp = radio_timestamp();
 
-		zb_hw_stop();
-		
 		zb_hw_set_stx();
 		ll_hw_rst_rfifo();
     ll_hw_rst_tfifo();
-		
+
 		ll_hw_write_tfifo(&buffer[0], total);
-		
+
 		ll_hw_go();
-		
+
 		osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-		
+
     // if ack is required in FCF
 		/*
     if (radio_tx_wait_ack)
@@ -499,20 +497,20 @@ static void radio_send_message (comms_msg_t * msg)
     else
     {
         //rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
-			
+
     }
-		
+
     debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
            src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
 		*/
 
-		
+
 		/*
     if (rslt == RAIL_STATUS_NO_ERROR)
     {
         osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
     }
-		
+
     else
     {
         //RAIL_Idle(m_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
@@ -545,7 +543,7 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes 
+			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
@@ -569,7 +567,7 @@ static void signal_send_done (comms_error_t err)
 
 static void handle_radio_tx (uint32_t flags)
 {
-	
+
     // If sending, see if it has completed
     if (NULL != radio_msg_sending)
     {
@@ -624,6 +622,7 @@ static void handle_radio_tx (uint32_t flags)
 
             if (resend)
             {
+                zb_hw_stop();
                 radio_send_message(radio_msg_sending->msg);
             }
             else
@@ -678,7 +677,7 @@ static void handle_radio_rx()
     // RX processing -----------------------------------------------------------
     if (osOK == osMessageQueueGet(m_config.recvQueue, &rxh, NULL, 0))
     {
-				
+
         RAIL_RxPacketInfo_t packetInfo = {0};
         RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
         if (packetHandle != RAIL_RX_PACKET_HANDLE_INVALID)
@@ -723,7 +722,7 @@ static void handle_radio_rx()
                     warnb1("rst", &rst, sizeof(RAIL_Status_t));
                     sys_panic("release");
                 }
-								
+
 								uint8_t buffer[256] = {0};
                 uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
                 //uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
@@ -795,7 +794,7 @@ static void handle_radio_rx()
                         _comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
                         comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
                         comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
-												
+
                         debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":",
                                 &(buffer[12]), 8,
                                 source, dest, amid,
@@ -806,7 +805,7 @@ static void handle_radio_rx()
                                 buffer[12],
                                 source, dest,
                                 packetDetails.rssi);
-												
+
 
                         comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
                     }
@@ -817,7 +816,7 @@ static void handle_radio_rx()
             else LOG("rxd");
         }
         else LOG("rxi");
-				
+
 
         // There might be more packets in the queue, but don't let RX swamp the
         // radio - defer it to the next run through the loop
@@ -842,6 +841,7 @@ static void radio_send_next()
 
     if (NULL != msg)
     {
+        zb_hw_stop();
         radio_send_message(msg);
     }
 }
@@ -851,12 +851,12 @@ static void radio_task(void *arg)
 {
 	while(1)
 	{
-		
+
 		//bool running = false;
-		
+
 		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 		uint32_t state;
-		
+
 		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever))
         state = m_state;
         osMutexRelease(m_radio_mutex);
@@ -873,7 +873,7 @@ static void radio_task(void *arg)
         {
             warn1("restart");
 						zb_hw_stop();
-					
+
 					/*
             m_rail_handle = radio_rail_init();
             if (m_rail_handle == NULL)
@@ -923,51 +923,51 @@ static void radio_task(void *arg)
 }
 radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 {
-	
+
 		if(channel < 10 || channel > 26)
 		{
 			 return NULL;
 		}
-	
-		
+
+
 		m_config.channel = channel;
-		
+
 		hal_rfphy_init();
-		
+
 		zb_set_channel(channel);
-		
+
 		zb_hw_set_srx(0);
-		
+
 		m_config.nodeaddr = nodeaddr;
 		m_config.pan = pan;
-		
+
 		int res = comms_am_create((comms_layer_t *)&m_radio_iface, nodeaddr, radio_send, radio_start, radio_stop);
-		
+
 		if(COMMS_SUCCESS != res)
 		{
 			return NULL;
 		}
-		
+
 		m_config.radio = (comms_layer_t *)&m_radio_iface;
-		
+
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
 		m_config.recvQueue = osMessageQueueNew(10,sizeof(mac_frame_t),NULL);
-		
-		
+
+
 		if(NULL == m_config.recvQueue)
 		{
 				return NULL;
 		}
-		
+
 		const osThreadAttr_t main_thread_attr = {.name = "radio"};
     m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
-		
+
 		if(NULL == m_config.threadid)
 		{
 				return NULL;
 		}
-		
-		
+
+
 		radio_msg_sending = NULL;
     radio_msg_queue_head = NULL;
     radio_msg_queue_free = &radio_msg_queue_memory[0];
@@ -977,18 +977,18 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
         radio_msg_queue_memory[i].next = (radio_queue_element_t*)radio_msg_queue_free;
         radio_msg_queue_free = &radio_msg_queue_memory[i];
     }
-		
-		
+
+
 		m_radio_mutex = osMutexNew(NULL);
     m_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
     m_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
-		
+
 		m_state = ST_RUNNING;
-		
+
 		memset(&m_rxBuf[0],0x0,127);
-		
+
 		zb_hw_go();
-	
+
 	 return &m_config;
 }
 
