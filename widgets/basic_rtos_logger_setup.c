@@ -14,6 +14,8 @@
 #include "em_usart.h"
 #include "logger_fwrite_basic.h"
 
+#include "platform_mutex.h"
+
 #include "loggers_ext.h"
 #if defined(LOGGER_LDMA)
 #include "logger_ldma.h"
