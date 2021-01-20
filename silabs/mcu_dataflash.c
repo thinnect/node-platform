@@ -12,7 +12,6 @@
 
 #include "platform_mutex.h"
 #include "em_msc.h"
-#include "em_core.h"
 
 #include "loglevels.h"
 #define __MODUUL__ "mcuf"
@@ -84,17 +83,13 @@ int32_t mcu_dataflash_write (int partition, uint32_t addr, uint32_t size, uint8_
 		memcpy(&(data[misaligned]), src, len);
 		// Write, result only valid if overwritten locations contained FF
 		debug3("w %"PRIu32" l %"PRIu32, addr, 4);
-		CORE_DECLARE_IRQ_STATE;
-		CORE_ENTER_CRITICAL();
 		if (mscReturnOk != MSC_WriteWord((uint32_t*)addr, data, 4))
 		{
-			CORE_EXIT_CRITICAL();
 			err1("w %"PRIu32" l %"PRIu32, addr, 4);
 			MSC_Deinit();
 			platform_mutex_release(m_mcu_dataflash_mutex);
 			return MCUDF_INVALID;
 		}
-		CORE_EXIT_CRITICAL();
 		addr += 4;
 		src += len;
 		size -= len;
@@ -109,17 +104,13 @@ int32_t mcu_dataflash_write (int partition, uint32_t addr, uint32_t size, uint8_
 		memcpy(data, (uint32_t*)(src+size-leftover), leftover);
 
 		debug3("w %"PRIu32" l %"PRIu32, offset, 4);
-		CORE_DECLARE_IRQ_STATE;
-		CORE_ENTER_CRITICAL();
 		if (mscReturnOk != MSC_WriteWord((uint32_t*)offset, data, 4))
 		{
-			CORE_EXIT_CRITICAL();
 			err1("w %"PRIu32" l %"PRIu32, offset, 4);
 			MSC_Deinit();
 			platform_mutex_release(m_mcu_dataflash_mutex);
 			return MCUDF_INVALID;
 		}
-		CORE_EXIT_CRITICAL();
 		size -= leftover;
 	}
 
@@ -128,17 +119,13 @@ int32_t mcu_dataflash_write (int partition, uint32_t addr, uint32_t size, uint8_
 		if ((0 == size % 4)&&(0 == addr % 4))
 		{
 			debug3("w %"PRIu32" l %"PRIu32, addr, size);
-			CORE_DECLARE_IRQ_STATE;
-			CORE_ENTER_CRITICAL();
 			if (mscReturnOk != MSC_WriteWord((uint32_t*)addr, src, size))
 			{
-				CORE_EXIT_CRITICAL();
 				err1("w %"PRIu32" l %"PRIu32, addr, size);
 				MSC_Deinit();
 				platform_mutex_release(m_mcu_dataflash_mutex);
 				return MCUDF_FAIL;
 			}
-			CORE_EXIT_CRITICAL();
 		}
 		else
 		{
@@ -166,17 +153,13 @@ int32_t mcu_dataflash_erase (int partition, uint32_t addr, uint32_t size)
 		for (uint32_t offset = addr; offset < addr + size; offset += FLASH_PAGE_SIZE)
 		{
 			info1("erase %"PRIu32, offset);
-			CORE_DECLARE_IRQ_STATE;
-			CORE_ENTER_CRITICAL();
 			if (mscReturnOk != MSC_ErasePage((uint32_t*)offset))
 			{
-				CORE_EXIT_CRITICAL();
 				err1("erase %"PRIu32, offset);
 				MSC_Deinit();
 				platform_mutex_release(m_mcu_dataflash_mutex);
 				return MCUDF_FAIL;
 			}
-			CORE_EXIT_CRITICAL();
 		}
 		MSC_Deinit();
 	}
