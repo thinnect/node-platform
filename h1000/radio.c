@@ -215,9 +215,26 @@ static uint32_t radio_timestamp ()
     return osKernelGetTickCount();
 }
 
+void phy_rf_rx(void)
+{
+    zb_hw_stop();
+    HAL_ENTER_CRITICAL_SECTION();
+
+    zb_hw_set_srx(0);
+
+    ll_hw_rst_tfifo();
+    ll_hw_rst_rfifo();
+    set_max_length(0xff);
+    
+    zb_hw_go();
+    //llWaitingIrq=TRUE;
+    HAL_EXIT_CRITICAL_SECTION();
+}
+
 
 void ZBRFPHY_IRQHandler(void)
 {
+	 uint8_t buf[128] = {0};
 	 irqflag = ll_hw_get_irq_status();
 	 HAL_ENTER_CRITICAL_SECTION();
 				if(irqflag & LIRQ_MD)
@@ -226,19 +243,24 @@ void ZBRFPHY_IRQHandler(void)
 					{
 						if(m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
 						{
-								m_packet_len = zbll_hw_read_rfifo_zb(&m_rxBuf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
+								m_packet_len = zbll_hw_read_rfifo_zb(&buf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
 								if(m_packet_len>0)
 								{
 
-										mac_frame_t* frame = (mac_frame_t*)&m_rxBuf[1];
+										mac_frame_t* frame = (mac_frame_t*)&buf[1];
 										if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
 										{
 											if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
 											{
-												int res = osMessageQueuePut(m_config.recvQueue, &frame->data[1], 0, 10); //TODO packet len off by 2
+												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
 												if(osOK != res)
 												{
-													LOG("Failed to put message in queue");
+													LOG("Failed to put message in queue %i\r\n", res);
+												}
+												else
+												{
+													osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+													phy_rf_rx();
 												}
 										  }
 									 }
@@ -253,7 +275,8 @@ void ZBRFPHY_IRQHandler(void)
 						 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 						 LOG("Switching back to RX\r\n");
 						 m_config.mode = RX_ONLY;
-						 zb_hw_set_srx(0);
+						phy_rf_rx();
+
 					}
 
 				}
@@ -670,15 +693,91 @@ static void handle_radio_tx (uint32_t flags)
     }
 }
 
-/*
+
 static void handle_radio_rx()
 {
-		mac_frame_t rxh;
+		uint8_t buffer[128];
     // RX processing -----------------------------------------------------------
-    if (osOK == osMessageQueueGet(m_config.recvQueue, &rxh, NULL, 0))
+    if (osOK == osMessageQueueGet(m_config.recvQueue, &buffer, NULL, 0))
     {
+			uint8_t len = buffer[0];
 
-        RAIL_RxPacketInfo_t packetInfo = {0};
+			if ((buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
+			{
+				comms_msg_t msg;
+				am_id_t amid;
+				void* payload;
+				uint8_t plen = len -13;
+				uint8_t lqi = 0xFF;
+				//uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
+				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+
+				comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
+				
+				if (buffer[11] == 0x3D)
+				{
+					/*
+						int32_t diff = (buffer[packetInfo.packetBytes - 4] << 24) |
+											 (buffer[packetInfo.packetBytes - 3] << 16) |
+											 (buffer[packetInfo.packetBytes - 2] << 8) |
+											 (buffer[packetInfo.packetBytes - 1]);
+
+						if ((packetInfo.packetBytes < 17)
+							||(packetInfo.packetBytes > 200))
+						{
+								sys_panic("packet");
+						}
+						amid = buffer[(packetInfo.packetBytes-5)];
+						plen = packetInfo.packetBytes - 17;
+						if (rts_valid)
+						{
+								comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						}
+						*/
+				}
+				else
+				{
+						amid = buffer[11];
+						//plen = packetInfo.packetBytes - 12;
+				}
+				
+				payload = comms_get_payload((comms_layer_t *)&m_radio_iface, &msg, plen);
+
+				if (NULL != payload)
+				{
+						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+
+						comms_set_packet_type((comms_layer_t *)&m_radio_iface, &msg, amid);
+						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
+						memcpy(payload, (const void *)&buffer[12], plen);
+				
+		/*				
+						if (rts_valid)
+						{
+								comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, timestamp);
+						}
+						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, packetDetails.rssi);
+						if (packetDetails.rssi < -96)
+						{
+								lqi = 0;
+						}
+						else if (packetDetails.rssi < -93) // RFR2-like LQI simulation
+						{
+								lqi = lqi + (packetDetails.rssi+93)*50;
+						}
+						*/
+						//_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
+						//comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
+						//comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
+						
+						LOG("rx: %04X->%04X[%02X]\r\n", source, dest, amid);
+
+						comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
+				}
+				
+				
+			}
+/*        RAIL_RxPacketInfo_t packetInfo = {0};
         RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
         if (packetHandle != RAIL_RX_PACKET_HANDLE_INVALID)
         {
@@ -725,7 +824,8 @@ static void handle_radio_rx()
 
 								uint8_t buffer[256] = {0};
                 uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
-                //uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+								
+                uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
 
 
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
@@ -821,9 +921,10 @@ static void handle_radio_rx()
         // There might be more packets in the queue, but don't let RX swamp the
         // radio - defer it to the next run through the loop
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_MORE);
+				*/
     }
 }
-*/
+
 
 static void radio_send_next()
 {
@@ -845,6 +946,7 @@ static void radio_send_next()
         radio_send_message(msg);
     }
 }
+
 
 
 static void radio_task(void *arg)
@@ -891,12 +993,18 @@ static void radio_task(void *arg)
 
         // Handle TX activities
         handle_radio_tx(flags);
-
+				
+				/*
+				zb_hw_stop();
+				zb_hw_set_srx(10000);
+				ll_hw_rst_rfifo();
+				zb_hw_go();
+*/
         // Check RX queue and process any messages there
-        //handle_radio_rx(); //TODO: uncomment
+        handle_radio_rx(); //TODO: uncomment
 
         // Handle "other" events
-       // handle_radio_events();
+        //handle_radio_events();
 
         if (radio_msg_sending == NULL)
         {
@@ -951,7 +1059,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		m_config.radio = (comms_layer_t *)&m_radio_iface;
 
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
-		m_config.recvQueue = osMessageQueueNew(10,sizeof(mac_frame_t),NULL);
+		m_config.recvQueue = osMessageQueueNew(10,128,NULL);
 
 
 		if(NULL == m_config.recvQueue)
