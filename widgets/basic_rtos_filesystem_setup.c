@@ -11,6 +11,7 @@
 
 #include "cmsis_os2.h"
 
+#include "platform.h"
 #include "retargetspi.h"
 #include "spi_flash.h"
 #include "fs.h"
@@ -34,17 +35,25 @@ void basic_rtos_filesystem_setup ()
 {
     // SPI for dataflash
     RETARGET_SpiInit();
-    
-    // Wake dataflash from deep sleep
-    RETARGET_SpiTransferHalf(0, "\xAB", 1, NULL, 0);
-    osDelay(50);
+
+    // Initialize flash subsystem and wake flash from deep sleep
+    spi_flash_init();
 
     // Get dataflash chip ID
     uint8_t jedec[4] = {0};
     RETARGET_SpiTransferHalf(0, "\x9F", 1, jedec, 4);
     info1("jedec %02x%02x%02x%02x", jedec[0], jedec[1], jedec[2], jedec[3]);
 
-    spi_flash_init();
+    if ((0x00 == jedec[0])||(0xFF == jedec[0])) // Invalid ID, flash not responsive
+    {
+        for (uint8_t i = 0; i < 10; i++)
+        {
+            err1("SPI flash");
+            osDelay(1000);
+        }
+        PLATFORM_HardReset(); // A hard-reset may help on some boards
+    }
+
     // spi_flash_mass_erase();
 
     m_spi_fs_driver.read = spi_flash_read;

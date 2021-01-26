@@ -9,6 +9,7 @@
 #define _SPI_FLASH_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 struct spi_flash_partitions_struct
 {
@@ -19,8 +20,10 @@ struct spi_flash_partitions_struct
 
 /**
  * Initialize the SPI flash component.
+ * @return true if flash working,
+ *         false intialization failed - flash did not respond.
  */
-void spi_flash_init(void);
+bool spi_flash_init(void);
 
 /**
  * Suspend the SPI flash to save power, resume is automatic.
@@ -30,8 +33,9 @@ void spi_flash_suspend(void);
 
 /**
  * Explicitly wake the flash, normally done automatically.
+ * @return true if flash working, false if resume failed.
  */
-void spi_flash_resume(void);
+bool spi_flash_resume(void);
 
 void spi_flash_cmd(uint8_t cmd);
 uint8_t spi_flash_status(void);

@@ -28,10 +28,8 @@ static uint64_t m_suspend_time;      // Time spent in the suspended state
 static uint32_t m_suspend_timestamp; // When the flash was last suspended
 #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
-void spi_flash_init(void)
+bool spi_flash_init(void)
 {
-	int i;
-
 	spi_flash_partitions[0].start = 0x0;
 	spi_flash_partitions[0].end = 0x4000;
 
@@ -45,11 +43,12 @@ void spi_flash_init(void)
 	m_suspend_mutex = osMutexNew(NULL);
 	#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
-	spi_flash_resume();
-	for (i = 0; i < SPI_FLASH_PARTITIONS_COUNT; i++)
+	for (int i = 0; i < SPI_FLASH_PARTITIONS_COUNT; i++)
 	{
 		spi_flash_partitions[i].size = spi_flash_partitions[i].end - spi_flash_partitions[i].start;
 	}
+
+	return spi_flash_resume();
 }
 
 void spi_flash_suspend(void)
@@ -72,13 +71,11 @@ void spi_flash_suspend(void)
 	debug1("slp");
 }
 
-void spi_flash_resume(void)
+bool spi_flash_resume(void)
 {
-	int i;
-
 	if (!spi_flash_sleeping)
 	{
-		return;
+		return true;
 	}
 
 	#ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
@@ -90,11 +87,10 @@ void spi_flash_resume(void)
 	debug1("wake");
 
 	// Wake FLASH chip from deep sleep
-	for (i = 0; i < 100; i++)
+	for (int i = 0; i < 100; i++)
 	{
-		int j;
 		RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xAB", 1, NULL, 0);
-		for(j = 0; j < 1000; j++)
+		for(int j = 0; j < 1000; j++)
 		{
 			uint8_t buffer[3];
 			buffer[0] = 0xFF;
@@ -103,12 +99,12 @@ void spi_flash_resume(void)
 			{
 				spi_flash_sleeping = 0;
 				debug1("rdy");
-				return;
+				return true;
 			}
 		}
 	}
 
-	sys_panic("flash"); // Flash did not wake up
+	return false;
 }
 
 uint64_t spi_flash_suspended_time(void)
