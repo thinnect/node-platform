@@ -76,6 +76,12 @@ static uint32_t m_foot[2] = {0};
 static uint8_t  m_packet_len = 0;
 static uint16_t m_pktLen = 0;
 static comms_layer_am_t m_radio_iface;
+static volatile uint8_t rx_busy;
+static volatile uint8_t rx_overflow;
+static volatile uint8_t rx_frame_error;
+static volatile uint8_t rx_abort;
+static volatile uint8_t rx_fail;
+static volatile uint8_t tx_ack_sent;
 
 static osMutexId_t m_radio_mutex;
 
@@ -252,6 +258,7 @@ void ZBRFPHY_IRQHandler(void)
 										{
 											if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
 											{
+												
 												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
 												if(osOK != res)
 												{
@@ -281,13 +288,17 @@ void ZBRFPHY_IRQHandler(void)
 
 				}
 
-									if(irqflag & LIRQ_CERR)
+					if(irqflag & LIRQ_CERR)
 					{
 						LOG("Error occured");
 					}
 					if(irqflag & LIRQ_CERR2)
 					{
 						LOG("Error Occured2");
+					}
+					if(irqflag & LIRQ_RTO)
+					{
+						LOG("RX Timed out");
 					}
 
 
@@ -502,7 +513,7 @@ static void radio_send_message (comms_msg_t * msg)
     m_radio_send_timestamp = radio_timestamp();
 
 		zb_hw_set_stx();
-		ll_hw_rst_rfifo();
+		//ll_hw_rst_rfifo();
     ll_hw_rst_tfifo();
 
 		ll_hw_write_tfifo(&buffer[0], total);
@@ -709,31 +720,27 @@ static void handle_radio_rx()
 				void* payload;
 				uint8_t plen = len -13;
 				uint8_t lqi = 0xFF;
-				//uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
 				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+				uint32_t timestamp = 0/*radio_timestamp() - (RAIL_GetTime() - rts)/1000*/;
 
 				comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
 				
 				if (buffer[11] == 0x3D)
 				{
-					/*
-						int32_t diff = (buffer[packetInfo.packetBytes - 4] << 24) |
-											 (buffer[packetInfo.packetBytes - 3] << 16) |
-											 (buffer[packetInfo.packetBytes - 2] << 8) |
-											 (buffer[packetInfo.packetBytes - 1]);
-
-						if ((packetInfo.packetBytes < 17)
-							||(packetInfo.packetBytes > 200))
+					
+						int32_t diff = (buffer[len - 4] << 24) | (buffer[len - 3] << 16) | (buffer[len- 2] << 8) | (buffer[len- 1]);
+	
+						
+						if ((len < 17)
+							||(len > 200))
 						{
 								sys_panic("packet");
 						}
-						amid = buffer[(packetInfo.packetBytes-5)];
-						plen = packetInfo.packetBytes - 17;
-						if (rts_valid)
-						{
-								comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
-						}
-						*/
+						amid = buffer[(len-5)];
+						plen = len - 17;
+
+						comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						
 				}
 				else
 				{
@@ -766,9 +773,9 @@ static void handle_radio_rx()
 								lqi = lqi + (packetDetails.rssi+93)*50;
 						}
 						*/
-						//_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
-						//comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
-						//comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
+						_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
+						comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
+						comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 						
 						LOG("rx: %04X->%04X[%02X]\r\n", source, dest, amid);
 
@@ -947,6 +954,67 @@ static void radio_send_next()
     }
 }
 
+static void handle_radio_events ()
+{
+    // RX busy handling -----------------------------------------------------
+    if (rx_busy || rx_overflow)
+    {
+			/*
+        uint8_t rxb __attribute__((unused));
+        uint8_t rxo __attribute__((unused));
+        CORE_irqState_t irqState = CORE_EnterCritical();
+        rxb = rx_busy;
+        rxo = rx_overflow;
+        rx_busy = 0;
+        rx_overflow = 0;
+        CORE_ExitCritical(irqState);
+			
+        warn1("rx b:%"PRIu8" o:%"PRIu8, rxb, rxo);
+			*/
+    }
+
+    // RX failure handling -----------------------------------------------------
+    if ((rx_abort > 100) || rx_fail)
+    {
+			/*
+        uint8_t rxa __attribute__((unused));
+        uint8_t rxf __attribute__((unused));
+        CORE_irqState_t irqState = CORE_EnterCritical();
+        rxa = rx_abort;
+        rxf = rx_fail;
+        rx_abort = 0;
+        rx_fail = 0;
+        CORE_ExitCritical(irqState);
+        warn1("rx a:%"PRIu8" f:%"PRIu8, rxa, rxf);
+			*/
+    }
+
+    // RX frame error handling -----------------------------------------------------
+    if (rx_frame_error)
+    {
+			/*
+        uint8_t rxfe __attribute__((unused));
+        CORE_irqState_t irqState = CORE_EnterCritical();
+        rxfe = rx_frame_error;
+        rx_frame_error = 0;
+        CORE_ExitCritical(irqState);
+        warn1("rx fe:%"PRIu8, rxfe);
+			*/
+    }
+
+    // TX ack sent -----------------------------------------------------------------
+    if (tx_ack_sent)
+    {
+			/*
+        uint8_t tas __attribute__((unused));
+        CORE_irqState_t irqState = CORE_EnterCritical();
+        tas = tx_ack_sent;
+        tx_ack_sent = 0;
+        CORE_ExitCritical(irqState);
+        info4("tx_ack_sent:%"PRIu8, tas);
+			*/
+    }
+}
 
 
 static void radio_task(void *arg)
