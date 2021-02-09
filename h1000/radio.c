@@ -218,7 +218,7 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
 
 static uint32_t radio_timestamp ()
 {
-    return osKernelGetTickCount();
+    return read_current_fine_time();
 }
 
 void phy_rf_rx(void)
@@ -237,10 +237,13 @@ void phy_rf_rx(void)
     HAL_EXIT_CRITICAL_SECTION();
 }
 
+uint32_t fine;
 
 void ZBRFPHY_IRQHandler(void)
 {
-	 uint8_t buf[128] = {0};
+	 uint8_t buf[140] = {0};
+	 uint32_t rts = radio_timestamp();
+	 fine = read_current_fine_time();
 	 irqflag = ll_hw_get_irq_status();
 	 HAL_ENTER_CRITICAL_SECTION();
 				if(irqflag & LIRQ_MD)
@@ -258,6 +261,13 @@ void ZBRFPHY_IRQHandler(void)
 										{
 											if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
 											{
+												// Receive timestamp, added to message buffer
+												uint8_t len = buf[0];
+												buf[len] = rts >> 24;
+												buf[len + 1] = rts >> 16;
+												buf[len + 2] = rts >> 8;
+												buf[len + 3] = rts;
+												
 												
 												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
 												if(osOK != res)
@@ -479,9 +489,10 @@ static void radio_send_message (comms_msg_t * msg)
         //debug1("evt time valid");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
-        evt_time = comms_get_event_time(iface, msg);
+        evt_time = comms_get_event_time_us(iface, msg);
         diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
 
+			  LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
@@ -577,7 +588,7 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
@@ -707,12 +718,13 @@ static void handle_radio_tx (uint32_t flags)
 
 static void handle_radio_rx()
 {
-		uint8_t buffer[128];
+		uint8_t buffer[140];
     // RX processing -----------------------------------------------------------
     if (osOK == osMessageQueueGet(m_config.recvQueue, &buffer, NULL, 0))
     {
 			uint8_t len = buffer[0];
-
+			uint32_t rts = (buffer[len] << 24) | (buffer[len+1] << 16) | (buffer[len+2] << 8) | buffer[len+3];
+			
 			if ((buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
 			{
 				comms_msg_t msg;
@@ -721,25 +733,25 @@ static void handle_radio_rx()
 				uint8_t plen = len -13;
 				uint8_t lqi = 0xFF;
 				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
-				uint32_t timestamp = 0/*radio_timestamp() - (RAIL_GetTime() - rts)/1000*/;
+				uint32_t currTime = radio_timestamp();
+				uint32_t timestamp = currTime - (currTime - rts);
 
 				comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
 				
 				if (buffer[11] == 0x3D)
 				{
 					
-						int32_t diff = (buffer[len - 4] << 24) | (buffer[len - 3] << 16) | (buffer[len- 2] << 8) | (buffer[len- 1]);
+						int32_t diff = (buffer[len - 5] << 24) | (buffer[len - 4] << 16) | (buffer[len- 3] << 8) | (buffer[len- 2]);
 	
-						
 						if ((len < 17)
 							||(len > 200))
 						{
 								sys_panic("packet");
 						}
-						amid = buffer[(len-5)];
-						plen = len - 17;
+						amid = buffer[(len-6)];
+						plen = len - 18;
 
-						comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
 						
 				}
 				else
@@ -758,26 +770,17 @@ static void handle_radio_rx()
 						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
 						memcpy(payload, (const void *)&buffer[12], plen);
 				
-		/*				
-						if (rts_valid)
-						{
-								comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, timestamp);
-						}
-						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, packetDetails.rssi);
-						if (packetDetails.rssi < -96)
-						{
-								lqi = 0;
-						}
-						else if (packetDetails.rssi < -93) // RFR2-like LQI simulation
-						{
-								lqi = lqi + (packetDetails.rssi+93)*50;
-						}
-						*/
+						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, fine);
+				
+						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, -60);
+						
+						lqi = lqi + (-60 + 93)*50;
+						
 						_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
 						comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
 						comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 						
-						LOG("rx: %04X->%04X[%02X]\r\n", source, dest, amid);
+						LOG("rx: %04X->%04X[%02X]\r\n", comms_am_get_source((comms_layer_t *)&m_radio_iface, &msg), comms_am_get_destination((comms_layer_t *)&m_radio_iface, &msg), comms_get_packet_type((comms_layer_t *)&m_radio_iface, &msg));
 
 						comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
 				}
@@ -1127,7 +1130,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		m_config.radio = (comms_layer_t *)&m_radio_iface;
 
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
-		m_config.recvQueue = osMessageQueueNew(10,128,NULL);
+		m_config.recvQueue = osMessageQueueNew(10,140,NULL);
 
 
 		if(NULL == m_config.recvQueue)
