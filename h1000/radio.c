@@ -284,7 +284,6 @@ void ZBRFPHY_IRQHandler(void)
 
 					if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY)
 					{
-						 LOG("Send done\r\n");
 						 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 						 LOG("Switching back to RX\r\n");
 						 m_config.mode = RX_ONLY;
@@ -477,6 +476,9 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
+		zb_hw_set_stx();
+    ll_hw_rst_tfifo();
+		
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
@@ -485,7 +487,7 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time_us(iface, msg);
-        diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
+        diff = evt_time - (radio_timestamp()+1000); // It will take at least 448us to get the packet going, round it up
 
 			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
@@ -510,20 +512,13 @@ static void radio_send_message (comms_msg_t * msg)
 	  uint8_t crcCode[2] = {0};
 		uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
-		zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
+		//zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
 
     buffer[1 + 11 + count + 1] = crcCode[0];
     buffer[1 + 11 + count + 2] = crcCode[1];
 
-
-    m_radio_send_timestamp = radio_timestamp();
-
-		zb_hw_set_stx();
-		//ll_hw_rst_rfifo();
-    ll_hw_rst_tfifo();
-
 		ll_hw_write_tfifo(&buffer[0], total);
-
+		m_radio_send_timestamp = radio_timestamp();
 		ll_hw_go();
 
 		osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
