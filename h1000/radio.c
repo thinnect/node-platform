@@ -237,13 +237,10 @@ void phy_rf_rx(void)
     HAL_EXIT_CRITICAL_SECTION();
 }
 
-uint32_t fine;
-
 void ZBRFPHY_IRQHandler(void)
 {
 	 uint8_t buf[140] = {0};
 	 uint32_t rts = radio_timestamp();
-	 fine = read_current_fine_time();
 	 irqflag = ll_hw_get_irq_status();
 	 HAL_ENTER_CRITICAL_SECTION();
 				if(irqflag & LIRQ_MD)
@@ -267,7 +264,6 @@ void ZBRFPHY_IRQHandler(void)
 												buf[len + 1] = rts >> 16;
 												buf[len + 2] = rts >> 8;
 												buf[len + 3] = rts;
-												
 												
 												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
 												if(osOK != res)
@@ -363,7 +359,7 @@ comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms
 
         osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
 
-        info3("snd %p \r\n", msg);
+//        info3("snd %p \r\n", msg);
         err = COMMS_SUCCESS;
     }
     else
@@ -469,7 +465,6 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[1] = 0x41;
     }
 
-
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
@@ -492,7 +487,7 @@ static void radio_send_message (comms_msg_t * msg)
         evt_time = comms_get_event_time_us(iface, msg);
         diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
 
-			  LOG("diff: %d\r\n", diff);
+			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
@@ -740,7 +735,6 @@ static void handle_radio_rx()
 				
 				if (buffer[11] == 0x3D)
 				{
-					
 						int32_t diff = (buffer[len - 5] << 24) | (buffer[len - 4] << 16) | (buffer[len- 3] << 8) | (buffer[len- 2]);
 	
 						if ((len < 17)
@@ -770,7 +764,7 @@ static void handle_radio_rx()
 						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
 						memcpy(payload, (const void *)&buffer[12], plen);
 				
-						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, fine);
+						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 				
 						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, -60);
 						
@@ -780,7 +774,7 @@ static void handle_radio_rx()
 						comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
 						comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 						
-						LOG("rx: %04X->%04X[%02X]\r\n", comms_am_get_source((comms_layer_t *)&m_radio_iface, &msg), comms_am_get_destination((comms_layer_t *)&m_radio_iface, &msg), comms_get_packet_type((comms_layer_t *)&m_radio_iface, &msg));
+						//LOG("rx: %04X->%04X[%02X]\r\n", comms_am_get_source((comms_layer_t *)&m_radio_iface, &msg), comms_am_get_destination((comms_layer_t *)&m_radio_iface, &msg), comms_get_packet_type((comms_layer_t *)&m_radio_iface, &msg));
 
 						comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
 				}
