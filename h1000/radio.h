@@ -39,6 +39,9 @@
 #define MAC_FCF_FRAME_TYPE     0x07
 
 
+#define MAC_FCF_ACK_PACKET 0x02
+
+
 typedef enum {
 	IDLE = 0x0,
 	BUSY,
