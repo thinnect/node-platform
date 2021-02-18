@@ -2,6 +2,7 @@
 #include "bus_dev.h"
 #include "sys_panic.h"
 #include "assert.h"
+#include "checksum.h"
 
 #define RADIO_MAX_SEND_TIME_MS 10000UL
 
@@ -260,19 +261,31 @@ void ZBRFPHY_IRQHandler(void)
 											{
 												// Receive timestamp, added to message buffer
 												uint8_t len = buf[0];
-												buf[len] = rts >> 24;
-												buf[len + 1] = rts >> 16;
-												buf[len + 2] = rts >> 8;
-												buf[len + 3] = rts;
-												
-												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
-												if(osOK != res)
+												uint16_t calcCrc = crc_kermit(&buf[1], buf[0] - 2); //len - crc
+												uint16 rxCrc = (buf[len-1]<<8) | buf[len];
+
+												if (calcCrc == rxCrc)
 												{
-													LOG("Failed to put message in queue %i\r\n", res);
+													// Replace used CRC with timestamp
+													buf[len-1] = rts >> 24;
+													buf[len] = rts >> 16;
+													buf[len + 1] = rts >> 8;
+													buf[len + 2] = rts;
+													
+													int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
+													if(osOK != res)
+													{
+														LOG("Failed to put message in queue %i\r\n", res);
+													}
+													else
+													{
+														osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+														phy_rf_rx();
+													}
 												}
 												else
 												{
-													osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+													LOG("CRC ERROR %04x != %04x\r\n", rxCrc, calcCrc);
 													phy_rf_rx();
 												}
 										  }
@@ -475,7 +488,7 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[10] = 0x3F;
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
-
+		
 		zb_hw_set_stx();
     ll_hw_rst_tfifo();
 		
@@ -505,17 +518,10 @@ static void radio_send_message (comms_msg_t * msg)
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
-
-    //RAIL_WriteTxFifo(m_rail_handle, buffer, count, true);
-    //RAIL_SetTxFifo(m_rail_handle, buffer, total, sizeof(buffer));
-
-	  uint8_t crcCode[2] = {0};
-		uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-
-		//zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
-
-    buffer[1 + 11 + count + 1] = crcCode[0];
-    buffer[1 + 11 + count + 2] = crcCode[1];
+		
+		uint16_t txCrc = crc_kermit(&buffer[1], buffer[0] - 2); //len - crc
+    buffer[1 + 11 + count + 1] = txCrc>>8;
+    buffer[1 + 11 + count + 2] = txCrc;
 
 		ll_hw_write_tfifo(&buffer[0], total);
 		m_radio_send_timestamp = radio_timestamp();
@@ -713,7 +719,7 @@ static void handle_radio_rx()
     if (osOK == osMessageQueueGet(m_config.recvQueue, &buffer, NULL, 0))
     {
 			uint8_t len = buffer[0];
-			uint32_t rts = (buffer[len] << 24) | (buffer[len+1] << 16) | (buffer[len+2] << 8) | buffer[len+3];
+			uint32_t rts = (buffer[len-1] << 24) | (buffer[len] << 16) | (buffer[len+1] << 8) | buffer[len+2];
 			
 			if ((buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
 			{
