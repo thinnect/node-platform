@@ -519,9 +519,9 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
 		
-		uint16_t txCrc = crc_kermit(&buffer[1], buffer[0] - 2); //len - crc
-    buffer[1 + 11 + count + 1] = txCrc>>8;
-    buffer[1 + 11 + count + 2] = txCrc;
+		//uint16_t txCrc = crc_kermit(&buffer[1], buffer[0] - 2); //len - crc
+    //buffer[1 + 11 + count + 1] = txCrc>>8;
+    //buffer[1 + 11 + count + 2] = txCrc;
 
 		ll_hw_write_tfifo(&buffer[0], total);
 		m_radio_send_timestamp = radio_timestamp();
