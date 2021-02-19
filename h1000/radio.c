@@ -266,6 +266,8 @@ void ZBRFPHY_IRQHandler(void)
 
 												if (calcCrc == rxCrc)
 												{
+													uint32_t airTimeUs = ((len+1)*8) * 4; // packet length / transmission speed
+													rts = rts -airTimeUs;
 													// Replace used CRC with timestamp
 													buf[len-1] = rts >> 24;
 													buf[len] = rts >> 16;
@@ -500,7 +502,7 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time_us(iface, msg);
-        diff = evt_time - (radio_timestamp()+1000); // It will take at least 448us to get the packet going, round it up
+        diff = evt_time - (radio_timestamp()+250); // It will take at least 250us to get the packet going, round it up
 
 			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
@@ -747,7 +749,6 @@ static void handle_radio_rx()
 						plen = len - 18;
 
 						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
-						
 				}
 				else
 				{
