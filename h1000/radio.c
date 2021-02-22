@@ -84,6 +84,12 @@ static uint32_t m_foot[2] = {0};
 static uint8_t  m_packet_len = 0;
 static uint16_t m_pktLen = 0;
 static comms_layer_am_t m_radio_iface;
+static volatile uint8_t rx_busy;
+static volatile uint8_t rx_overflow;
+static volatile uint8_t rx_frame_error;
+static volatile uint8_t rx_abort;
+static volatile uint8_t rx_fail;
+static volatile uint8_t tx_ack_sent;
 
 static osMutexId_t m_radio_mutex;
 
@@ -220,7 +226,42 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
 
 static uint32_t radio_timestamp ()
 {
-    return osKernelGetTickCount();
+    return read_current_fine_time();
+}
+
+uint8_t rf_getRssi(void)
+{
+    uint8_t rssi_cur = 0;
+    uint16_t foff = 0;
+    uint8_t carrSens = 0;
+    rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
+    return rssi_cur;
+}
+
+
+phy_sts_t rf_performCCA(void)
+{
+    uint8_t rssi_peak = 150;
+    uint32_t rssi_cur = 0;
+    uint32_t rssiCnt = 0;
+    
+    // enter the rx status 
+    zb_hw_set_srx(0);
+    volatile uint32_t curTime0 = read_current_fine_time();
+    volatile uint32_t curTime1 = read_current_fine_time();
+/*
+    while(RF_PHY_TIME_DELTA(curTime1, curTime0) < 128) {
+        rssi_cur += rf_getRssi();
+        curTime1 = read_current_fine_time();
+        rssiCnt++;
+    }
+	*/
+    rssi_peak = rssi_cur/rssiCnt; 
+    if (rssi_peak < m_config.cca_treshhold) {
+        return PHY_CCA_BUSY;
+    } else {
+        return PHY_CCA_IDLE;
+    }
 }
 
 void phy_rf_rx(void)
@@ -242,42 +283,64 @@ void phy_rf_rx(void)
 
 void ZBRFPHY_IRQHandler(void)
 {
-	/*
-	// LL_HW_IRQ_STATUS
-#define LIRQ_MD                                 0x0001              //bit00
-#define LIRQ_CERR                               0x0002              //bit01
-#define LIRQ_RTO                                0x0004              //bit02
-#define LIRQ_RFULL                              0x0008              //bit03
-#define LIRQ_RHALF                              0x0010              //bit04
-#define LIRQ_TD                                 0x0100              //bit08
-#define LIRQ_RD                                 0x0200              //bit09
-#define LIRQ_COK                                0x0400              //bit10
-#define LIRQ_CERR2                              0x0800              //bit11
-#define LIRQ_LTO                                0x1000              //bit12
-#define LIRQ_NACK                               0x2000              //bit13
-	
-	*/
-	 uint8_t buf[128] = {0};
+	 uint8_t buf[140] = {0};
+	 uint8_t zbRssi=0;
+   uint16_t zbFoff=0;
+   uint8_t zbCarrSens=0;
+	 uint32_t rts = radio_timestamp();
 	 irqflag = ll_hw_get_irq_status();
 	 HAL_ENTER_CRITICAL_SECTION();
 	 
+	 LOG("\r\nInterrupt\r\n");
 	 
+	  if (!(irqflag & LIRQ_MD))          // only process IRQ of MODE DONE
+    {
+        ll_hw_clr_irq();                  // clear irq status
+        return;
+    }
 	 
-				if(irqflag & LIRQ_MD)
+		if(irqflag & LIRQ_COK)
+		{
+			if(m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
 				{
-					if(irqflag & LIRQ_COK)
-					{
-						if(m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
-						{
-								m_packet_len = zbll_hw_read_rfifo_zb(&buf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
-								if(m_packet_len>0)
+					m_packet_len = zbll_hw_read_rfifo_zb(&buf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
+					rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1],
+                                            &zbRssi,&zbFoff,&zbCarrSens);
+					
+					
+				if(m_packet_len>0)
+					{	
+						mac_frame_t* frame = (mac_frame_t*)&buf[1];
+						if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
 								{
-
-										mac_frame_t* frame = (mac_frame_t*)&buf[1];
-										if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
-										{
-											if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
-											{
+								if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
+								{
+									
+								//is ackknowledge packet
+								if ((buf[0] == 0x05) && (buf[1] == 0x02) && (buf[3] == m_radio_tx_num))
+                   {
+											if (radio_tx_wait_ack)
+                      {
+                        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+                      }
+											
+                        } else {
+													
+													if(frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT)
+													{
+														 //need immidiate ack response
+														
+													}
+													
+													
+												
+												// Receive timestamp, added to message buffer
+												uint8_t len = buf[0];
+												buf[len] = rts >> 24;
+												buf[len + 1] = rts >> 16;
+												buf[len + 2] = rts >> 8;
+												buf[len + 3] = rts;
+												
 												int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
 												if(osOK != res)
 												{
@@ -287,41 +350,33 @@ void ZBRFPHY_IRQHandler(void)
 												{
 													osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
 													phy_rf_rx();
-												}
+												}						
 										  }
 									 }
 								}
-						}
+						  }
+					  }
 					}
-					
+				
 					if(irqflag & LIRQ_RFULL)
 					{
 						osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
 					}
-					
-
-
-					if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY && !radio_tx_wait_ack)
+					if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY && radio_tx_wait_ack == false)
 					{
-						 LOG("Send done\r\n");
 						 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 						 LOG("Switching back to RX\r\n");
 						 m_config.mode = RX_ONLY;
 						 phy_rf_rx();
-
 					}
-
-				}
-
 					if(irqflag & LIRQ_CERR)
 					{
 						osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
 					}
-					if(irqflag & LIRQ_CERR2)
+					if(irqflag & LIRQ_RTO)
 					{
-						LOG("Error Occured2");
+						LOG("RX Timed out");
 					}
-
 
 			ll_hw_clr_irq();
 
@@ -372,7 +427,7 @@ comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms
 
         osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
 
-        info3("snd %p \r\n", msg);
+//        info3("snd %p \r\n", msg);
         err = COMMS_SUCCESS;
     }
     else
@@ -478,7 +533,6 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[1] = 0x41;
     }
 
-
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
@@ -491,6 +545,9 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
+		zb_hw_set_stx();
+    ll_hw_rst_tfifo();
+		
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
@@ -498,9 +555,10 @@ static void radio_send_message (comms_msg_t * msg)
         //debug1("evt time valid");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
-        evt_time = comms_get_event_time(iface, msg);
-        diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
+        evt_time = comms_get_event_time_us(iface, msg);
+        diff = evt_time - (radio_timestamp()+1000); // It will take at least 448us to get the packet going, round it up
 
+			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
@@ -523,54 +581,16 @@ static void radio_send_message (comms_msg_t * msg)
 	  uint8_t crcCode[2] = {0};
 		uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
-		zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
+		//zigbee_crc16_gen(&buffer[12], count, seed, crcCode);
 
     buffer[1 + 11 + count + 1] = crcCode[0];
     buffer[1 + 11 + count + 2] = crcCode[1];
 
-
-    m_radio_send_timestamp = radio_timestamp();
-
-		zb_hw_set_stx();
-		ll_hw_rst_rfifo();
-    ll_hw_rst_tfifo();
-
 		ll_hw_write_tfifo(&buffer[0], total);
-
+		m_radio_send_timestamp = radio_timestamp();
 		ll_hw_go();
 
 		osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-
-    // if ack is required in FCF
-		/*
-    if (radio_tx_wait_ack)
-    {
-        //rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
-    }
-    else
-    {
-        //rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
-
-    }
-
-    debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
-           src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
-		*/
-
-
-		/*
-    if (rslt == RAIL_STATUS_NO_ERROR)
-    {
-        osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-    }
-
-    else
-    {
-        //RAIL_Idle(m_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
-        //RAIL_StartRx(m_rail_handle, m_radio_channel_current, NULL);
-        osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND_FAIL);
-    }
-		*/
 }
 
 
@@ -596,7 +616,7 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
@@ -744,7 +764,7 @@ static void handle_radio_events (uint32_t flags)
 	
 	if ( flags & RDFLG_RAIL_RX_OVERFLOW )
 	{
-		
+			ll_hw_rst_rfifo();
 	}
 	
 	if ( flags & RDFLG_RAIL_RX_BUSY )
@@ -766,12 +786,13 @@ static void handle_radio_events (uint32_t flags)
 
 static void handle_radio_rx()
 {
-		uint8_t buffer[128];
+		uint8_t buffer[140];
     // RX processing -----------------------------------------------------------
     if (osOK == osMessageQueueGet(m_config.recvQueue, &buffer, NULL, 0))
     {
 			uint8_t len = buffer[0];
-
+			uint32_t rts = (buffer[len] << 24) | (buffer[len+1] << 16) | (buffer[len+2] << 8) | buffer[len+3];
+			
 			if ((buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
 			{
 				comms_msg_t msg;
@@ -779,14 +800,26 @@ static void handle_radio_rx()
 				void* payload;
 				uint8_t plen = len -13;
 				uint8_t lqi = 0xFF;
-				//uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
 				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+				uint32_t currTime = radio_timestamp();
+				uint32_t timestamp = currTime - (currTime - rts);
 
 				comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
 				
 				if (buffer[11] == 0x3D)
 				{
+						int32_t diff = (buffer[len - 5] << 24) | (buffer[len - 4] << 16) | (buffer[len- 3] << 8) | (buffer[len- 2]);
+	
+						if ((len < 17)
+							||(len > 200))
+						{
+								sys_panic("packet");
+						}
+						amid = buffer[(len-6)];
+						plen = len - 18;
 
+						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						
 				}
 				else
 				{
@@ -805,6 +838,15 @@ static void handle_radio_rx()
 						memcpy(payload, (const void *)&buffer[12], plen);
 				
 						LOG("rx: %04X->%04X[%02X]\r\n", source, dest, amid);
+						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
+				
+						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, -60);
+						
+						lqi = lqi + (-60 + 93)*50;
+						
+						_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
+						comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
+						comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 
 						comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
 				}
@@ -836,8 +878,6 @@ static void radio_send_next()
     }
 }
 
-
-
 static void radio_task(void *arg)
 {
 	while(1)
@@ -863,7 +903,7 @@ static void radio_task(void *arg)
         if (flags & RDFLG_RADIO_RESTART)
         {
             warn1("restart");
-						zb_hw_stop();
+						//zb_hw_stop();
 
 					/*
             m_rail_handle = radio_rail_init();
@@ -937,6 +977,8 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
 		m_config.nodeaddr = nodeaddr;
 		m_config.pan = pan;
+		m_config.cca_treshhold = -75;
+		
 
 		int res = comms_am_create((comms_layer_t *)&m_radio_iface, nodeaddr, radio_send, radio_start, radio_stop);
 
@@ -944,11 +986,10 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		{
 			return NULL;
 		}
-
-		m_config.radio = (comms_layer_t *)&m_radio_iface;
-
+		
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
-		m_config.recvQueue = osMessageQueueNew(10,128,NULL);
+		m_config.radio = (comms_layer_t *)&m_radio_iface;
+		m_config.recvQueue = osMessageQueueNew(10,140,NULL);
 
 
 		if(NULL == m_config.recvQueue)

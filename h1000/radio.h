@@ -41,6 +41,10 @@
 
 #define MAC_FCF_ACK_PACKET 0x02
 
+typedef enum {
+    PHY_CCA_IDLE       = 0x00,
+    PHY_CCA_BUSY       = 0x01,
+} phy_sts_t;
 
 typedef enum {
 	IDLE = 0x0,
@@ -84,6 +88,7 @@ typedef struct {
 	uint8_t status;
 	uint8_t mode;
 	uint8_t errno;
+	int8_t cca_treshhold;
 	osMessageQueueId_t recvQueue;
 	osThreadId_t threadid;
 	comms_layer_t* radio;
