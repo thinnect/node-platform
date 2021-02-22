@@ -677,6 +677,9 @@ static void radio_resend()
 
     if (NULL != msg)
     {
+				zb_hw_stop();
+				zb_hw_timing();
+			//osDelay(5); //TODO: check if needed
         radio_send_message(msg);
     }
 }
