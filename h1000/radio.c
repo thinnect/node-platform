@@ -124,18 +124,23 @@ static void zb_hw_go(void)
 
 static void zb_hw_stop(void)
 {
-    subWriteReg(AP_PCR_BASE+0x0c,10,10,0);//reset bbll
+    
+	subWriteReg(AP_PCR_BASE+0x0c,10,10,0);//reset bbll
 
     PHY_REG_WT( 0x400300a4,0x00000140);     // clr tx_auto
     PHY_REG_WT( 0x400300a0,0x0000000e);     // clr pll_auto override
     PHY_REG_WT( 0x400300a0,0x00000000);     // clr pll_auto override
 
     subWriteReg(AP_PCR_BASE+0x0c,10,10,1);//release bbll reset
+}
 
+static void zb_hw_timing(void)
+{
     //restore the ll register
     ll_hw_set_tx_rx_release	(10,   	 1);
-    ll_hw_set_rx_tx_interval(    	98);		//T_IFS=192+2us for ZB
-    ll_hw_set_tx_rx_interval(      108);		//T_IFS=192-6us for ZB
+    ll_hw_set_rx_tx_interval(    	60);		//T_IFS=192+2us for ZB 98
+    ll_hw_set_tx_rx_interval(      66);		//T_IFS=192-6us for ZB 108
+	//ll_hw_set_trx_settle(32, 8, 52);
 
 }
 
@@ -227,6 +232,7 @@ void phy_rf_rx(void)
     zb_hw_stop();
     HAL_ENTER_CRITICAL_SECTION();
 
+		zb_hw_timing();
     zb_hw_set_srx(0);
 
     ll_hw_rst_tfifo();
@@ -439,6 +445,8 @@ static void radio_resend_timeout_cb(void * argument)
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_RESEND);
 }
 
+
+
 static void radio_send_message (comms_msg_t * msg)
 {
     __align(4) static uint8_t buffer[160] = {0};
@@ -493,6 +501,7 @@ static void radio_send_message (comms_msg_t * msg)
 		
 		zb_hw_set_stx();
     ll_hw_rst_tfifo();
+		ll_hw_rst_rfifo();
 		
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
@@ -666,6 +675,7 @@ static void handle_radio_tx (uint32_t flags)
             if (resend)
             {
                 zb_hw_stop();
+								zb_hw_timing();
                 radio_send_message(radio_msg_sending->msg);
             }
             else
@@ -949,6 +959,8 @@ static void radio_send_next()
     if (NULL != msg)
     {
         zb_hw_stop();
+				zb_hw_timing();
+				osDelay(5);
         radio_send_message(msg);
     }
 }
@@ -1078,6 +1090,7 @@ static void radio_task(void *arg)
             if (ST_STOPPING == state)
             {
                 zb_hw_stop(); // Will return queued messages
+								zb_hw_timing();
                 //running = false;
             }
             else
