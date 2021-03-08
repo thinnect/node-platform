@@ -311,6 +311,7 @@ void ZBRFPHY_IRQHandler(void)
                         {
                             if (radio_tx_wait_ack)
                             {
+															  radio_tx_wait_ack = false;
                                 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
                             }
                         } else {
@@ -358,6 +359,7 @@ void ZBRFPHY_IRQHandler(void)
 
     if(irqflag & LIRQ_RFULL)
     {
+				LOG("LIRQ_RFULL\r\n");
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
     }
 
@@ -372,14 +374,17 @@ void ZBRFPHY_IRQHandler(void)
 
     if(irqflag & LIRQ_CERR)
     {
-        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
+			LOG("LIRQ_CERR\r\n");
+      osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
     }
     if(irqflag & LIRQ_RTO)
     {
-        LOG("RX Timed out");
+        LOG("RX Timed out\r\n");
     }
 
     ll_hw_clr_irq();
+		
+		phy_rf_rx();
 
     HAL_EXIT_CRITICAL_SECTION();
 }
