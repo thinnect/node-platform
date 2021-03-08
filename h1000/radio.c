@@ -4,6 +4,7 @@
 #include "assert.h"
 #include "checksum.h"
 
+
 #define RADIO_MAX_SEND_TIME_MS 10000UL
 
 // Thread flag definitions
@@ -95,6 +96,12 @@ static osTimerId_t m_send_timeout_timer;
 static osTimerId_t m_resend_timer;
 
 static uint32_t m_radio_send_timestamp;
+
+static rssi_packed rssi_list[10];
+static uint8_t rssi_cursor;
+
+static uint8_t m_csma_retries;
+
 
 
 static void zb_hw_go(void)
@@ -247,13 +254,13 @@ phy_sts_t rf_performCCA(void)
     zb_hw_set_srx(0);
     volatile uint32_t curTime0 = read_current_fine_time();
     volatile uint32_t curTime1 = read_current_fine_time();
-/*
-    while(RF_PHY_TIME_DELTA(curTime1, curTime0) < 128) {
+
+    while( (curTime1 - curTime0) < 128) {
         rssi_cur += rf_getRssi();
         curTime1 = read_current_fine_time();
         rssiCnt++;
     }
-   */
+   
     rssi_peak = rssi_cur/rssiCnt;
     if (rssi_peak < m_config.cca_treshhold) {
         return PHY_CCA_BUSY;
@@ -278,6 +285,7 @@ void phy_rf_rx(void)
     //llWaitingIrq=TRUE;
     HAL_EXIT_CRITICAL_SECTION();
 }
+
 
 void ZBRFPHY_IRQHandler(void)
 {
@@ -334,7 +342,12 @@ void ZBRFPHY_IRQHandler(void)
                             buf[len + 1] = rts >> 8;
                             buf[len + 2] = rts;
 
-                            int res = osMessageQueuePut(m_config.recvQueue, &buf, 0, 0); //TODO packet len off by 2
+                            int res = osMessageQueuePut(m_config.recvQueue, &buf[0], 0, 0); //TODO packet len off by 2
+														rssi_list[rssi_cursor].rssi = zbRssi*-1;
+														rssi_list[rssi_cursor].sqnum = frame->seqnum;
+														
+														rssi_cursor = (rssi_cursor + 1) % 5;
+													
                             if(osOK != res)
                             {
                                 LOG("Failed to put message in queue %i\r\n", res);
@@ -380,7 +393,7 @@ void ZBRFPHY_IRQHandler(void)
     }
 
     ll_hw_clr_irq();
-
+		phy_rf_rx();
     HAL_EXIT_CRITICAL_SECTION();
 }
 
@@ -548,9 +561,9 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
-	zb_hw_set_stx();
+		zb_hw_set_stx();
     ll_hw_rst_tfifo();
-	ll_hw_rst_rfifo();
+		ll_hw_rst_rfifo();
 
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
@@ -579,46 +592,18 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc
 
-		//uint16_t txCrc = crc_kermit(&buffer[1], buffer[0] - 2); //len - crc
-    //buffer[1 + 11 + count + 1] = txCrc>>8;
-    //buffer[1 + 11 + count + 2] = txCrc;
-
-	ll_hw_write_tfifo(&buffer[0], total);
-	m_radio_send_timestamp = radio_timestamp();
-	ll_hw_go();
-
-	osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-
-    // if ack is required in FCF
-		/*
-    if (radio_tx_wait_ack)
-    {
-        //rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
-    }
-    else
-    {
-        //rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
-
-    }
-
-    debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
-           src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
-		*/
-
-
-		/*
-    if (rslt == RAIL_STATUS_NO_ERROR)
-    {
-        osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-    }
-
-    else
-    {
-        //RAIL_Idle(m_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
-        //RAIL_StartRx(m_rail_handle, m_radio_channel_current, NULL);
-        osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND_FAIL);
-    }
-		*/
+		ll_hw_write_tfifo(&buffer[0], total);
+		m_radio_send_timestamp = radio_timestamp();
+		
+		if(rf_performCCA() == PHY_CCA_IDLE)
+		{
+				zb_hw_set_stx();
+				ll_hw_go();
+				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+		} else {
+				ll_hw_rst_tfifo();
+				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
+		}
 }
 
 
@@ -739,11 +724,14 @@ static void handle_radio_tx (uint32_t flags)
 
             osTimerStop(m_send_timeout_timer);
 
+            if (m_csma_retries < 7)
+            {
+                resend = true;
+                m_csma_retries++;
+            }
 
             if (resend)
             {
-                zb_hw_stop();
-								zb_hw_timing();
                 radio_send_message(radio_msg_sending->msg);
             }
             else
@@ -751,6 +739,7 @@ static void handle_radio_tx (uint32_t flags)
                 if (comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg)
                  < comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg))
                 {
+                    m_csma_retries = 0;
                     osTimerStart(m_resend_timer, comms_get_timeout((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
                 }
                 else
@@ -846,166 +835,35 @@ static void handle_radio_rx()
 
 						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, -60);
-
-						lqi = lqi + (-60 + 93)*50;
+						int16_t rssi = 0; 
+						mac_frame_t* frame = (mac_frame_t*)&buffer[1];
+						for(int i = 0; i < 5; i++)
+						{
+								if(rssi_list[i].sqnum == frame->seqnum)
+								{
+									rssi = rssi_list[i].rssi;
+								}
+						}
+					
+						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, rssi);
+            if (rssi < -96)
+            {
+                 lqi = 0;
+            }
+            else if (rssi < -93) // RFR2-like LQI simulation
+            {
+               lqi = lqi + (rssi+93)*50;
+            }
 
 						_comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
 						comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
 						comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
-
-						//LOG("rx: %04X->%04X[%02X]\r\n", comms_am_get_source((comms_layer_t *)&m_radio_iface, &msg), comms_am_get_destination((comms_layer_t *)&m_radio_iface, &msg), comms_get_packet_type((comms_layer_t *)&m_radio_iface, &msg));
 
 						comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
 				}
 
 
 			}
-/*        RAIL_RxPacketInfo_t packetInfo = {0};
-        RAIL_RxPacketHandle_t packetHandle = RAIL_GetRxPacketInfo(m_rail_handle, rxh, &packetInfo);
-        if (packetHandle != RAIL_RX_PACKET_HANDLE_INVALID)
-        {
-            RAIL_RxPacketDetails_t packetDetails = {0};
-            RAIL_Status_t rx_status = RAIL_GetRxPacketDetailsAlt(m_rail_handle, packetHandle, &packetDetails);
-            if (rx_status == RAIL_STATUS_NO_ERROR)
-            {
-                uint8_t buffer[256] = {0};
-                RAIL_RxPacketDetails_t timeDetails = packetDetails;
-                bool rts_valid = timeDetails.timeReceived.timePosition != RAIL_PACKET_TIME_INVALID;
-                uint32_t rts = 0; // timeReceived.packetTime
-
-                assertPacketInfo(&packetInfo); // Sanity checks
-
-                if (rts_valid)
-                {
-                    // Account for CRC ... unless someone somewhere configures RAIL_RX_OPTION_STORE_CRC?
-                    timeDetails.timeReceived.totalPacketBytes = packetInfo.packetBytes + 2; // + CRC_BYTES;
-                    // Want the earliest timestamp possible
-                    rx_status = RAIL_GetRxTimePreambleStartAlt(m_rail_handle, &timeDetails);
-                    if (rx_status == RAIL_STATUS_NO_ERROR)
-                    {
-                        rts = timeDetails.timeReceived.packetTime;
-                    }
-                    else
-                    {
-                        rts_valid = false;
-                    }
-                }
-
-                if (rts_valid == false)
-                {
-                    warn1("rts %d %d", packetDetails.timeReceived.timePosition, timeDetails.timeReceived.timePosition);
-                }
-
-                RAIL_CopyRxPacket(buffer, &packetInfo);
-
-                RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, packetHandle);
-                if (rst != RAIL_STATUS_NO_ERROR)
-                {
-                    warnb1("rst", &rst, sizeof(RAIL_Status_t));
-                    sys_panic("release");
-                }
-
-								uint8_t buffer[256] = {0};
-                uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
-
-                uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
-
-
-                if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
-                {
-                    warn3("same seqNum:%02"PRIX8, buffer[3]);
-                }
-                else if ((packetInfo.packetBytes >= 12)
-                       &&(buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
-                {
-                    comms_msg_t msg;
-                    am_id_t amid;
-                    void* payload;
-                    uint8_t plen;
-                    uint8_t lqi = 0xFF;
-                    uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
-
-                    comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
-                    if (buffer[11] == 0x3D)
-                    {
-                        int32_t diff = (buffer[packetInfo.packetBytes - 4] << 24) |
-                                   (buffer[packetInfo.packetBytes - 3] << 16) |
-                                   (buffer[packetInfo.packetBytes - 2] << 8) |
-                                   (buffer[packetInfo.packetBytes - 1]);
-
-                        if ((packetInfo.packetBytes < 17)
-                          ||(packetInfo.packetBytes > 200))
-                        {
-                            sys_panic("packet");
-                        }
-                        amid = buffer[(packetInfo.packetBytes-5)];
-                        plen = packetInfo.packetBytes - 17;
-                        if (rts_valid)
-                        {
-                            comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
-                        }
-                    }
-                    else
-                    {
-                        amid = buffer[11];
-                        plen = packetInfo.packetBytes - 12;
-                    }
-
-                    payload = comms_get_payload((comms_layer_t *)&m_radio_iface, &msg, plen);
-
-                    if (NULL != payload)
-                    {
-                        uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
-
-                        comms_set_packet_type((comms_layer_t *)&m_radio_iface, &msg, amid);
-                        comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
-                        memcpy(payload, (const void *)&buffer[12], plen);
-
-                        if (rts_valid)
-                        {
-                            comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, timestamp);
-                        }
-                        _comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, packetDetails.rssi);
-                        if (packetDetails.rssi < -96)
-                        {
-                            lqi = 0;
-                        }
-                        else if (packetDetails.rssi < -93) // RFR2-like LQI simulation
-                        {
-                            lqi = lqi + (packetDetails.rssi+93)*50;
-                        }
-                        _comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
-                        comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
-                        comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
-
-                        debugb1("rx %04"PRIX16"->%04"PRIX16"[%02"PRIX8"] %"PRIu32" r:%"PRIi8" l:%"PRIu8" %"PRIu8":",
-                                &(buffer[12]), 8,
-                                source, dest, amid,
-                                rts,
-                                packetDetails.rssi, lqi, plen);
-
-                        debug2("Rx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" rssi:%"PRIi8"",
-                                buffer[12],
-                                source, dest,
-                                packetDetails.rssi);
-
-
-                        comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
-                    }
-                    else LOG("rx bad pl ");
-                }
-                else LOG("rx bad ");
-            }
-            else LOG("rxd");
-        }
-        else LOG("rxi");
-
-
-        // There might be more packets in the queue, but don't let RX swamp the
-        // radio - defer it to the next run through the loop
-        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_MORE);
-				*/
     }
 }
 
@@ -1037,7 +895,7 @@ static void handle_radio_events (uint32_t flags)
 {
     if ( flags & RDFLG_RAIL_RX_OVERFLOW )
     {
-
+			ll_hw_rst_rfifo();
     }
 
     if ( flags & RDFLG_RAIL_RX_BUSY )
@@ -1168,7 +1026,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
 		m_config.recvQueue = osMessageQueueNew(10,140,NULL);
-        m_config.radio = (comms_layer_t *)&m_radio_iface;
+    m_config.radio = (comms_layer_t *)&m_radio_iface;
 
 		if(NULL == m_config.recvQueue)
 		{

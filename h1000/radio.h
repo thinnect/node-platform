@@ -78,6 +78,11 @@ typedef struct {
 	uint8_t data[MAX_PAYLOAD_SIZE];
 } __attribute__((packed)) mac_frame_t;
 
+typedef struct {
+	uint8_t sqnum;
+	int16_t rssi;
+} __attribute__((packed)) rssi_packed;
+
 
 typedef struct {
 	uint16_t nodeaddr;
