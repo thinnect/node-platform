@@ -79,9 +79,9 @@ typedef struct {
 } __attribute__((packed)) mac_frame_t;
 
 typedef struct {
-	uint8_t sqnum;
 	int16_t rssi;
-} __attribute__((packed)) rssi_packed;
+	uint8_t buffer[140];
+} __attribute__((packed)) data_rssi;
 
 
 typedef struct {

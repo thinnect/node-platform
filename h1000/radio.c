@@ -2,7 +2,6 @@
 #include "bus_dev.h"
 #include "sys_panic.h"
 #include "assert.h"
-#include "checksum.h"
 
 
 #define RADIO_MAX_SEND_TIME_MS 10000UL
@@ -96,9 +95,6 @@ static osTimerId_t m_send_timeout_timer;
 static osTimerId_t m_resend_timer;
 
 static uint32_t m_radio_send_timestamp;
-
-static rssi_packed rssi_list[10];
-static uint8_t rssi_cursor;
 
 static uint8_t m_csma_retries;
 
@@ -289,7 +285,8 @@ void phy_rf_rx(void)
 
 void ZBRFPHY_IRQHandler(void)
 {
-    uint8_t buf[140] = {0};
+    data_rssi packet = {0};
+		uint8_t buffer[140] = {0};
     uint8_t zbRssi=0;
     uint16_t zbFoff=0;
     uint8_t zbCarrSens=0;
@@ -305,17 +302,18 @@ void ZBRFPHY_IRQHandler(void)
     {
         if(m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
         {
-            m_packet_len = zbll_hw_read_rfifo_zb(&buf[0], &m_pktLen, &m_foot[0], &m_foot[1]);
+            m_packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &m_pktLen, &m_foot[0], &m_foot[1]);
             rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
             if(m_packet_len>0)
             {
-                mac_frame_t* frame = (mac_frame_t*)&buf[1];
+								memcpy(&packet.buffer[0],&buffer[0],140);
+                mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
                 if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
                 {
                     if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
                     {
                         //is ackknowledge packet
-                        if ((buf[0] == 0x05) && (buf[1] == 0x02) && (buf[3] == m_radio_tx_num))
+                        if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
                         {
                             if (radio_tx_wait_ack)
                             {
@@ -328,26 +326,19 @@ void ZBRFPHY_IRQHandler(void)
                             }
                         }
                         // Receive timestamp, added to message buffer
-                        uint8_t len = buf[0];
-                        uint16_t calcCrc = crc_kermit(&buf[1], buf[0] - 2); //len - crc
-                        uint16 rxCrc = (buf[len-1]<<8) | buf[len];
+														uint8_t len = packet.buffer[0];
 
-                        if (calcCrc == rxCrc)
-                        {
                             uint32_t airTimeUs = ((len+1)*8) * 4; // packet length / transmission speed
                             rts = rts -airTimeUs;
                             // Replace used CRC with timestamp
-                            buf[len-1] = rts >> 24;
-                            buf[len] = rts >> 16;
-                            buf[len + 1] = rts >> 8;
-                            buf[len + 2] = rts;
+                            packet.buffer[len-1] = rts >> 24;
+                            packet.buffer[len] = rts >> 16;
+                            packet.buffer[len + 1] = rts >> 8;
+                            packet.buffer[len + 2] = rts;
 
-                            int res = osMessageQueuePut(m_config.recvQueue, &buf[0], 0, 0); //TODO packet len off by 2
-														rssi_list[rssi_cursor].rssi = zbRssi*-1;
-														rssi_list[rssi_cursor].sqnum = frame->seqnum;
-														
-														rssi_cursor = (rssi_cursor + 1) % 5;
-													
+														packet.rssi = -1 * zbRssi;
+														LOG("RSSI is %d", packet.rssi);
+                            int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                             if(osOK != res)
                             {
                                 LOG("Failed to put message in queue %i\r\n", res);
@@ -360,14 +351,12 @@ void ZBRFPHY_IRQHandler(void)
                         }
                         else
                         {
-                            LOG("CRC ERROR %04x != %04x\r\n", rxCrc, calcCrc);
                             phy_rf_rx();
                         }
                     }
                 }
             }
         }
-    }
 
     if(irqflag & LIRQ_RFULL)
     {
@@ -597,10 +586,12 @@ static void radio_send_message (comms_msg_t * msg)
 		
 		if(rf_performCCA() == PHY_CCA_IDLE)
 		{
+				LOG("CCA FREE");
 				zb_hw_set_stx();
 				ll_hw_go();
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 		} else {
+				LOG("CSMA blocked");
 				ll_hw_rst_tfifo();
 				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
 		}
@@ -783,43 +774,44 @@ static void handle_radio_tx (uint32_t flags)
 
 static void handle_radio_rx()
 {
-		uint8_t buffer[140];
+		//uint8_t buffer[140];
+		data_rssi packet =  {0};
     // RX processing -----------------------------------------------------------
-    if (osOK == osMessageQueueGet(m_config.recvQueue, &buffer, NULL, 0))
+    if (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0))
     {
-			uint8_t len = buffer[0];
-			uint32_t rts = (buffer[len-1] << 24) | (buffer[len] << 16) | (buffer[len+1] << 8) | buffer[len+2];
+			uint8_t len = packet.buffer[0];
+			uint32_t rts = (packet.buffer[len-1] << 24) | (packet.buffer[len] << 16) | (packet.buffer[len+1] << 8) | packet.buffer[len+2];
 
-			if ((buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
+			if ((packet.buffer[2] == 0x88)&&(packet.buffer[5] == 0x00) && (packet.buffer[10] == 0x3F))
 			{
 				comms_msg_t msg;
 				am_id_t amid;
 				void* payload;
 				uint8_t plen = len -13;
 				uint8_t lqi = 0xFF;
-				uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
+				uint16_t source = ((uint16_t)packet.buffer[8] << 0) | ((uint16_t)packet.buffer[9] << 8);
 				uint32_t currTime = radio_timestamp();
 				uint32_t timestamp = currTime - (currTime - rts);
 
 				comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
 
-				if (buffer[11] == 0x3D)
+				if (packet.buffer[11] == 0x3D)
 				{
-						int32_t diff = (buffer[len - 5] << 24) | (buffer[len - 4] << 16) | (buffer[len- 3] << 8) | (buffer[len- 2]);
+						int32_t diff = (packet.buffer[len - 5] << 24) | (packet.buffer[len - 4] << 16) | (packet.buffer[len- 3] << 8) | (packet.buffer[len- 2]);
 
 						if ((len < 17)
 							||(len > 200))
 						{
 								sys_panic("packet");
 						}
-						amid = buffer[(len-6)];
+						amid = packet.buffer[(len-6)];
 						plen = len - 18;
 
 						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
 				}
 				else
 				{
-						amid = buffer[11];
+						amid = packet.buffer[11];
 						//plen = packetInfo.packetBytes - 12;
 				}
 
@@ -827,23 +819,18 @@ static void handle_radio_rx()
 
 				if (NULL != payload)
 				{
-						uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
+						uint16_t dest = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
 
 						comms_set_packet_type((comms_layer_t *)&m_radio_iface, &msg, amid);
 						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
-						memcpy(payload, (const void *)&buffer[12], plen);
+						memcpy(payload, (const void *)&packet.buffer[12], plen);
 
 						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-						int16_t rssi = 0; 
-						mac_frame_t* frame = (mac_frame_t*)&buffer[1];
-						for(int i = 0; i < 5; i++)
-						{
-								if(rssi_list[i].sqnum == frame->seqnum)
-								{
-									rssi = rssi_list[i].rssi;
-								}
-						}
+						int16_t rssi = packet.rssi; 
+						mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
+					
+						LOG("RSSI is %d", rssi);
 					
 						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, rssi);
             if (rssi < -96)
@@ -1025,7 +1012,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		}
 
 		JUMP_FUNCTION(V4_IRQ_HANDLER)  =   (uint32_t)&ZBRFPHY_IRQHandler;
-		m_config.recvQueue = osMessageQueueNew(10,140,NULL);
+		m_config.recvQueue = osMessageQueueNew(10,142,NULL);
     m_config.radio = (comms_layer_t *)&m_radio_iface;
 
 		if(NULL == m_config.recvQueue)
