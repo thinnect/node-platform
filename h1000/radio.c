@@ -236,6 +236,7 @@ uint8_t rf_getRssi(void)
     uint16_t foff = 0;
     uint8_t carrSens = 0;
     rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
+		//rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1], &rssi_cur,&foff,&carrSens);
     return rssi_cur;
 }
 
@@ -258,6 +259,7 @@ phy_sts_t rf_performCCA(void)
     }
    
     rssi_peak = rssi_cur/rssiCnt;
+		LOG("RSSI_peak %d\r\n",rssi_peak);
     if (rssi_peak < m_config.cca_treshhold) {
         return PHY_CCA_BUSY;
     } else {
@@ -300,6 +302,7 @@ void ZBRFPHY_IRQHandler(void)
     }
     if(irqflag & LIRQ_COK)
     {
+				
         if(m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
         {
             m_packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &m_pktLen, &m_foot[0], &m_foot[1]);
@@ -337,7 +340,7 @@ void ZBRFPHY_IRQHandler(void)
                             packet.buffer[len + 2] = rts;
 
 														packet.rssi = -1 * zbRssi;
-														LOG("RSSI is %d", packet.rssi);
+														//LOG("Rssi %d\r\n", packet.rssi);
                             int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                             if(osOK != res)
                             {
@@ -593,6 +596,8 @@ static void radio_send_message (comms_msg_t * msg)
 		} else {
 				LOG("CSMA blocked\r\n");
 				ll_hw_rst_tfifo();
+			  zb_hw_set_srx(0);
+				ll_hw_go();
 				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
 		}
 }
@@ -724,6 +729,7 @@ static void handle_radio_tx (uint32_t flags)
             if (resend)
             {
                 radio_send_message(radio_msg_sending->msg);
+								//radio_resend();
             }
             else
             {
