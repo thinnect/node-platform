@@ -337,7 +337,6 @@ void ZBRFPHY_IRQHandler(void)
                             packet.buffer[len + 2] = rts;
 
 														packet.rssi = -1 * zbRssi;
-														LOG("RSSI is %d", packet.rssi);
                             int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                             if(osOK != res)
                             {
@@ -562,7 +561,7 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time_us(iface, msg);
-        diff = evt_time - (radio_timestamp()+280); // It will take at least 250us to get the packet going, round it up
+        diff = evt_time - (radio_timestamp()+520); // It will take at least 250us to get the packet going, round it up
 
 			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
@@ -586,12 +585,10 @@ static void radio_send_message (comms_msg_t * msg)
 		
 		if(rf_performCCA() == PHY_CCA_IDLE)
 		{
-				LOG("CCA FREE\r\n");
 				zb_hw_set_stx();
 				ll_hw_go();
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 		} else {
-				LOG("CSMA blocked\r\n");
 				ll_hw_rst_tfifo();
 				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
 		}
@@ -829,8 +826,6 @@ static void handle_radio_rx()
 
 						int16_t rssi = packet.rssi; 
 						mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-					
-						LOG("RSSI is %d", rssi);
 					
 						_comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, rssi);
             if (rssi < -96)
