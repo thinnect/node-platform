@@ -562,7 +562,7 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time_us(iface, msg);
-        diff = evt_time - (radio_timestamp()+250); // It will take at least 250us to get the packet going, round it up
+        diff = evt_time - (radio_timestamp()+280); // It will take at least 250us to get the packet going, round it up
 
 			  //LOG("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
@@ -586,12 +586,12 @@ static void radio_send_message (comms_msg_t * msg)
 		
 		if(rf_performCCA() == PHY_CCA_IDLE)
 		{
-				LOG("CCA FREE");
+				LOG("CCA FREE\r\n");
 				zb_hw_set_stx();
 				ll_hw_go();
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 		} else {
-				LOG("CSMA blocked");
+				LOG("CSMA blocked\r\n");
 				ll_hw_rst_tfifo();
 				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
 		}
@@ -1002,7 +1002,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
 		m_config.nodeaddr = nodeaddr;
 		m_config.pan = pan;
-        m_config.cca_treshhold = -75;
+    m_config.cca_treshhold = 70;
 
 		int res = comms_am_create((comms_layer_t *)&m_radio_iface, nodeaddr, radio_send, radio_start, radio_stop);
 
