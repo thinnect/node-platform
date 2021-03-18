@@ -240,6 +240,17 @@ uint8_t rf_getRssi(void)
     return rssi_cur;
 }
 
+uint8_t rf_carriersense(void)
+{
+    uint8_t rssi_cur = 0;
+    uint16_t foff = 0;
+    uint8_t carrSens = 0;
+    rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
+		LOG(" Carrier sense : %d \r\n", carrSens);
+		//rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1], &rssi_cur,&foff,&carrSens);
+    return carrSens;
+}
+
 
 phy_sts_t rf_performCCA(void)
 {
@@ -267,6 +278,32 @@ phy_sts_t rf_performCCA(void)
     }
 }
 
+phy_sts_t checkEther(void)
+{
+    uint8_t rssi_peak = 150;
+    uint32_t rssi_cur = 0;
+    uint32_t rssiCnt = 0;
+
+    // enter the rx status
+    zb_hw_set_srx(0);
+    volatile uint32_t curTime0 = read_current_fine_time();
+    volatile uint32_t curTime1 = read_current_fine_time();
+
+    while( (curTime1 - curTime0) < 128) {
+        rssi_cur += rf_carriersense();
+        curTime1 = read_current_fine_time();
+        rssiCnt++;
+    }
+   
+    rssi_peak = rssi_cur/rssiCnt;
+		LOG("Carr %d\r\n",rssi_peak);
+    if (rssi_peak < m_config.cca_treshhold) {
+        return PHY_CCA_IDLE;
+    } else {
+        return PHY_CCA_BUSY;
+    }
+}
+
 void phy_rf_rx(void)
 {
     zb_hw_stop();
@@ -283,8 +320,26 @@ void phy_rf_rx(void)
     //llWaitingIrq=TRUE;
     HAL_EXIT_CRITICAL_SECTION();
 }
-
-
+/*
+phy_sts_t CSMA()
+{
+	  uint8_t rssi_cur = 0;
+    uint16_t foff = 0;
+    uint8_t carrSens = 0;
+	 // check if channel idle
+		rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
+	
+	
+	//
+	if(carrSens != 0)
+	{
+		
+	}
+	
+	
+	
+}
+*/
 void ZBRFPHY_IRQHandler(void)
 {
     data_rssi packet = {0};
@@ -586,11 +641,12 @@ static void radio_send_message (comms_msg_t * msg)
 		ll_hw_write_tfifo(&buffer[0], total);
 		m_radio_send_timestamp = radio_timestamp();
 		
-		if(rf_performCCA() == PHY_CCA_IDLE)
+		if(checkEther() == PHY_CCA_IDLE)
 		{
 				zb_hw_set_stx();
 				ll_hw_go();
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+				//osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 		} else {
 				ll_hw_rst_tfifo();
 			  zb_hw_set_srx(0);
