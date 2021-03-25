@@ -3,6 +3,10 @@
 #include "sys_panic.h"
 #include "assert.h"
 
+#include "loglevels.h"
+#define __MODUUL__ "main"
+#define __LOG_LEVEL__ ( LOG_LEVEL_radio & BASE_LOG_LEVEL )
+#include "log.h"
 
 #define RADIO_MAX_SEND_TIME_MS 10000UL
 
@@ -259,7 +263,7 @@ phy_sts_t rf_performCCA(void)
     }
    
     rssi_peak = rssi_cur/rssiCnt;
-		LOG("RSSI_peak %d\r\n",rssi_peak);
+		debug1("RSSI_peak %d\r\n",rssi_peak);
     if (rssi_peak < m_config.cca_treshhold) {
         return PHY_CCA_BUSY;
     } else {
@@ -343,7 +347,7 @@ void ZBRFPHY_IRQHandler(void)
                             int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                             if(osOK != res)
                             {
-                                LOG("Failed to put message in queue %i\r\n", res);
+                                debug1("Failed to put message in queue %i\r\n", res);
                             }
                             else
                             {
@@ -368,7 +372,7 @@ void ZBRFPHY_IRQHandler(void)
     if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY && radio_tx_wait_ack == false)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-        LOG("Switching back to RX\r\n");
+        debug1("Switching back to RX\r\n");
         m_config.mode = RX_ONLY;
         phy_rf_rx();
 
@@ -380,7 +384,7 @@ void ZBRFPHY_IRQHandler(void)
     }
     if(irqflag & LIRQ_RTO)
     {
-        LOG("RX Timed out");
+        debug1("RX Timed out");
     }
 
     ll_hw_clr_irq();
@@ -566,7 +570,7 @@ static void radio_send_message (comms_msg_t * msg)
         evt_time = comms_get_event_time_us(iface, msg);
         diff = evt_time - (radio_timestamp()+520); // It will take at least 250us to get the packet going, round it up
 
-			  //LOG("diff: %d\r\n", diff);
+			  //debug1("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
@@ -632,7 +636,7 @@ static void signal_send_done (comms_error_t err)
     }
 
 		/*
-    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
+    debug1ger(err==COMMS_SUCCESS?debug1_INFO3:debug1_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
            msgp, err,
            qtime,
@@ -696,7 +700,7 @@ static void handle_radio_tx (uint32_t flags)
                 resend = true;
             }
 
-            /*logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
+            /*debug1ger(resend?debug1_DEBUG1:debug1_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
                    comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
                    comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
 						*/

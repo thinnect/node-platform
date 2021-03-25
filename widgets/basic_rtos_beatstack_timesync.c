@@ -23,13 +23,14 @@
 
 void basic_nw_time_changed (uint32_t offset)
 {
+	
 	uint32_t yxk = osCounterGetSecond() + offset;
 	time_t rtc = time(NULL);
 	debug1("NW:%"PRIu32 "yxk:%"PRIu32, offset, yxk);
 	if((time_t)(-1) == rtc)
 	{
 		debug1("first"); // Clock totally off, assume it's still the century when the image was built
-		rtc = IDENT_TIMESTAMP;
+		rtc = 1234;
 	}
 
 	rtc = yxk_time(yxk, &rtc);
@@ -39,6 +40,7 @@ void basic_nw_time_changed (uint32_t offset)
 		time_rtc_stime(&rtc);
 	}
 	else err1("rvrs");
+	
 }
 
 void basic_change_nw_time ()
@@ -52,4 +54,5 @@ void basic_change_nw_time ()
 	info1("Time:%"PRIi64", NW:%"PRIu32, (int64_t)t, yxko);
 
 	beatstack_nw_time_set(yxko);
+	
 }
