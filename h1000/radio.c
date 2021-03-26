@@ -54,6 +54,9 @@ struct radio_queue_element
 };
 // -----------------------------------------------------------------------------
 
+static comms_status_change_f * m_state_change_cb;
+static void * m_state_change_user;
+
 // TX queue with a linked list -------------------------------------------------
 static radio_queue_element_t radio_msg_queue_memory[7];
 static radio_queue_element_t* radio_msg_queue_free = NULL;
@@ -482,12 +485,16 @@ static void hal_rfphy_init(void)
 }
 comms_error_t radio_stop(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
+	m_state_change_cb = cb;
+	m_state_change_user = user;
 	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STOP);
 	return COMMS_SUCCESS;
 }
 
 comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
+	m_state_change_cb = cb;
+	m_state_change_user = user;
 	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_START);
 	return COMMS_SUCCESS;
 }
@@ -920,7 +927,19 @@ static void radio_task(void *arg)
 		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever))
         state = m_state;
         osMutexRelease(m_radio_mutex);
-
+		 
+		 if (flags & RDFLG_RADIO_START)
+     {
+			 //TODO: start_radio_now function, doesnt allow radio to sleep, starts RX and gives callback.
+				m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
+		 }
+		 
+		 if (flags & RDFLG_RADIO_STOP)
+     {
+			 //TODO: stop_radio_now function which return COMMS_EOFF on pending TX messages and
+			 // discardes any pending RX messages.
+				m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STOPPED, m_state_change_user);
+		 }
 		 /*
         if (ST_STARTING == state)
         {
