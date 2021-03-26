@@ -4,7 +4,7 @@
 #include "assert.h"
 
 #include "loglevels.h"
-#define __MODUUL__ "main"
+#define __MODUUL__ "radio"
 #define __LOG_LEVEL__ ( LOG_LEVEL_radio & BASE_LOG_LEVEL )
 #include "log.h"
 
