@@ -98,7 +98,13 @@ static uint32_t m_radio_send_timestamp;
 
 static uint8_t m_csma_retries;
 
+static comms_status_change_f * m_state_change_cb;
+static void * m_state_change_user;
 
+static uint8_t m_radio_channel_configured;
+static uint8_t m_radio_channel_current;
+
+static uint32_t m_stop_timestamp;
 
 static void zb_hw_go(void)
 {
@@ -533,14 +539,64 @@ static void hal_rfphy_init(void)
 }
 comms_error_t radio_stop(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
-	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STOP);
-	return COMMS_SUCCESS;
+	    comms_error_t err = COMMS_SUCCESS;
+    if (interface != (comms_layer_iface_t *)&m_radio_iface)
+    {
+        return COMMS_EINVAL;
+    }
+
+    while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
+
+    if (ST_OFF == m_state)
+    {
+        err = COMMS_ALREADY;
+    }
+    else if (ST_RUNNING != m_state)
+    {
+        err = COMMS_EBUSY;
+    }
+    else
+    {
+			  m_state = ST_STOPPING;
+        m_state_change_cb = cb;
+        m_state_change_user = user;
+				osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STOP);
+		}
+		
+		osMutexRelease(m_radio_mutex);
+		
+	return err;
 }
 
 comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
-	osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_START);
-	return COMMS_SUCCESS;
+	    comms_error_t err = COMMS_SUCCESS;
+    if (interface != (comms_layer_iface_t *)&m_radio_iface)
+    {
+        return COMMS_EINVAL;
+    }
+		
+		while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
+		
+    if (ST_RUNNING == m_state)
+    {
+        err = COMMS_ALREADY;
+    }
+    else if (ST_OFF != m_state)
+    {
+        err = COMMS_EBUSY;
+    }
+    else
+    {
+	   m_state = ST_STARTING;
+     m_state_change_cb = cb;
+     m_state_change_user = user;
+			osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_START);
+		}
+		
+		osMutexRelease(m_radio_mutex);
+		
+		return err;
 }
 
 static void radio_send_timeout_cb (void * argument)
@@ -553,6 +609,54 @@ static void radio_resend_timeout_cb(void * argument)
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_RESEND);
 }
 
+
+
+static void stop_radio_now ()
+{
+    info2("stop");
+
+    // Return any pending TX messages with COMMS_EOFF
+    // No mutex, queue cannot change - send not accepting msgs in stop state
+    while (NULL != radio_msg_queue_head)
+    {
+        radio_queue_element_t* qe = radio_msg_queue_head;
+        warn1("rm txmsg %p", qe->msg);
+        qe->send_done((comms_layer_t *)&m_radio_iface, qe->msg, COMMS_EOFF, qe->user);
+
+        radio_msg_queue_head = qe->next;
+        qe->next = radio_msg_queue_free;
+        radio_msg_queue_free = qe;
+    }
+		
+		data_rssi packet =  {0};
+    // Discard any pending RX messages
+    while (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0))
+    {
+    }
+
+    m_stop_timestamp = radio_timestamp();
+
+    while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
+    m_state = ST_OFF;
+    osMutexRelease(m_radio_mutex);
+
+		zb_hw_stop();
+		
+    m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STOPPED, m_state_change_user);
+}
+
+static void start_radio_now ()
+{
+    info2("start");
+
+    m_radio_channel_current = m_radio_channel_configured;
+
+    while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
+    m_state = ST_RUNNING;
+    osMutexRelease(m_radio_mutex);
+
+    m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
+}
 
 
 static void radio_send_message (comms_msg_t * msg)
@@ -771,7 +875,7 @@ static void handle_radio_tx (uint32_t flags)
         {
             bool resend = false;
 
-            osTimerStop(m_send_timeout_timer);
+            //osTimerStop(m_send_timeout_timer);
 
             if (m_csma_retries < 7)
             {
@@ -1101,11 +1205,11 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     m_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
     m_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
 
-		m_state = ST_RUNNING;
+		m_state = ST_OFF;
 
 		memset(&m_rxBuf[0],0x0,127);
 
-		zb_hw_go();
+		//zb_hw_go();
 
 	 return &m_config;
 }
