@@ -31,4 +31,9 @@ uint32_t rtcc_calibrate_now ();
  */
 void rtcc_configure_periodic_calibration(uint32_t period_ms, freq_set_f * setfunc);
 
+/**
+ * Disable and reset any resources allocated for calibration
+ */
+void rtcc_disable_calibration ();
+
 #endif//RTCC_CALIB_H_
