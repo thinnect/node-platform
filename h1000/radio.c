@@ -252,7 +252,7 @@ uint8_t rf_carriersense(void)
     uint16_t foff = 0;
     uint8_t carrSens = 0;
     rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
-		LOG(" Carrier sense : %d \r\n", carrSens);
+		//LOG(" Carrier sense : %d \r\n", carrSens);
 		//rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1], &rssi_cur,&foff,&carrSens);
     return carrSens;
 }
@@ -426,7 +426,7 @@ void ZBRFPHY_IRQHandler(void)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
     }
 
-    if( (irqflag & LIRQ_TD) && m_config.mode == TX_ONLY && radio_tx_wait_ack == false)
+    if( (irqflag & LIRQ_TD) && radio_tx_wait_ack == false)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         LOG("Switching back to RX\r\n");
@@ -570,7 +570,7 @@ comms_error_t radio_stop(comms_layer_iface_t* interface, comms_status_change_f* 
 
 comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
 {
-	    comms_error_t err = COMMS_SUCCESS;
+	  comms_error_t err = COMMS_SUCCESS;
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
     {
         return COMMS_EINVAL;
@@ -749,6 +749,7 @@ static void radio_send_message (comms_msg_t * msg)
 		{
 				zb_hw_set_stx();
 				ll_hw_go();
+				LOG("Started timeout timer\r\n");
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 				//osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 		} else {
@@ -914,7 +915,7 @@ static void handle_radio_tx (uint32_t flags)
             uint32_t passed = radio_timestamp() - m_radio_send_timestamp;
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
-                err1("TIMEOUT");
+                err1("TIMEOUT\r\n");
                 signal_send_done(COMMS_ETIMEOUT);
 
                 // Presumably something is wrong with the radio
@@ -922,7 +923,7 @@ static void handle_radio_tx (uint32_t flags)
             }
             else // Perhaps triggered because timer from previous send was not stopped in time
             {
-                //warn1("timeout %"PRIu32, passed);
+                warn1("restarting timeout with new value\r\n");
                 osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS - passed);
             }
         }
@@ -1073,17 +1074,17 @@ static void radio_task(void *arg)
 		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 		uint32_t state;
 
-		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever))
-        state = m_state;
-        osMutexRelease(m_radio_mutex);
+		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
+     state = m_state;
+     osMutexRelease(m_radio_mutex);
 
-		 /*
+		 
         if (ST_STARTING == state)
         {
-            //start_radio_now();
-            running = true;
+            start_radio_now();
+            //running = true;
         }
-		*/
+		
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
@@ -1209,7 +1210,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
 		memset(&m_rxBuf[0],0x0,127);
 
-		//zb_hw_go();
+		zb_hw_go();
 
 	 return &m_config;
 }
