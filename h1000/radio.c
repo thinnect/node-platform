@@ -348,6 +348,8 @@ phy_sts_t CSMA()
 */
 void ZBRFPHY_IRQHandler(void)
 {
+		HAL_ENTER_CRITICAL_SECTION();
+		LOG("Entered IRQ\r\n");
     data_rssi packet = {0};
 		uint8_t buffer[140] = {0};
     uint8_t zbRssi=0;
@@ -355,10 +357,12 @@ void ZBRFPHY_IRQHandler(void)
     uint8_t zbCarrSens=0;
     uint32_t rts = radio_timestamp();
     irqflag = ll_hw_get_irq_status();
-    HAL_ENTER_CRITICAL_SECTION();
+		LOG(" Flag: %08x \r\n", irqflag);
     if (!(irqflag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
-        ll_hw_clr_irq();                  // clear irq status
+				LOG("Mode is not done\r\n");
+        ll_hw_clr_irq();
+				HAL_EXIT_CRITICAL_SECTION();			// clear irq status
         return;
     }
     if(irqflag & LIRQ_COK)
