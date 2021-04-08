@@ -106,6 +106,8 @@ static uint8_t m_radio_channel_current;
 
 static uint32_t m_stop_timestamp;
 
+static bool transfer_pending = false;
+
 static void zb_hw_go(void)
 {
     *(volatile uint32_t *)(LL_HW_BASE+ 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
@@ -170,7 +172,7 @@ static void zb_hw_set_stx(void)
 		m_config.mode = TX_ONLY;
 }
 
-/*
+
 static void zb_hw_set_trx(uint32_t rxTimeOutUs)
 {
     ll_hw_set_rx_timeout(rxTimeOutUs);
@@ -178,7 +180,7 @@ static void zb_hw_set_trx(uint32_t rxTimeOutUs)
     ll_hw_set_trx_settle(32, 8, 52);          //RxAFE,PLL
 		m_config.mode = TX_RX_MODE;
 }
-*/
+
 
 static void zb_set_channel(uint8_t chn)
 {
@@ -316,9 +318,16 @@ void phy_rf_rx(void)
     HAL_ENTER_CRITICAL_SECTION();
 
 		zb_hw_timing();
-    zb_hw_set_srx(0);
 
-    ll_hw_rst_tfifo();
+	if(!transfer_pending)
+	{
+		zb_hw_set_srx(0);
+	}
+
+	
+		//zb_hw_set_trx(0);
+	
+    //ll_hw_rst_tfifo();
     ll_hw_rst_rfifo();
     set_max_length(0xff);
 
@@ -434,6 +443,7 @@ void ZBRFPHY_IRQHandler(void)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         LOG("Switching back to RX\r\n");
+				transfer_pending = false;
         m_config.mode = RX_ONLY;
         phy_rf_rx();
 
@@ -715,9 +725,9 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
-		zb_hw_set_stx();
+		zb_hw_set_trx(0);
     ll_hw_rst_tfifo();
-		ll_hw_rst_rfifo();
+		//ll_hw_rst_rfifo();
 
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
@@ -753,6 +763,7 @@ static void radio_send_message (comms_msg_t * msg)
 		{
 				zb_hw_set_stx();
 				ll_hw_go();
+				transfer_pending = true;
 				LOG("Started timeout timer\r\n");
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 				//osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
@@ -1165,6 +1176,8 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		zb_set_channel(channel);
 
 		zb_hw_set_srx(0);
+		
+		//zb_hw_set_trx(0);
 
 		m_config.nodeaddr = nodeaddr;
 		m_config.pan = pan;
