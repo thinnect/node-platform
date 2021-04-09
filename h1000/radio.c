@@ -574,7 +574,8 @@ static void radio_send_message (comms_msg_t * msg)
         //debug1("evt time valid");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
-        evt_time = comms_get_event_time_us(iface, msg);
+        //evt_time = comms_get_event_time_us(iface, msg);
+			evt_time = comms_get_event_time(iface, msg);
         diff = evt_time - (radio_timestamp()+520); // It will take at least 250us to get the packet going, round it up
 
 			  //debug1("diff: %d\r\n", diff);
@@ -633,7 +634,8 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-			comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			//comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
@@ -820,8 +822,8 @@ static void handle_radio_rx()
 						}
 						amid = packet.buffer[(len-6)];
 						plen = len - 18;
-
-						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						//comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
 				}
 				else
 				{
@@ -839,7 +841,8 @@ static void handle_radio_rx()
 						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
 						memcpy(payload, (const void *)&packet.buffer[12], plen);
 
-						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
+						comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
+						//comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
 						int16_t rssi = packet.rssi; 
 						mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
