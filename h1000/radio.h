@@ -16,7 +16,6 @@
 
 #include "gpio.h"
 #include "pwrmgr.h"
-#include "log.h"
 
 
 #include "mist_comm_iface.h"
