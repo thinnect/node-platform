@@ -4,6 +4,12 @@
 #include "assert.h"
 
 
+#include "loglevels.h"
+#define __MODUUL__ "radio"
+#define __LOG_LEVEL__ ( LOG_LEVEL_main & 0xFFFF )
+#include "log.h"
+
+
 #define RADIO_MAX_SEND_TIME_MS 10000UL
 
 // Thread flag definitions
@@ -304,7 +310,6 @@ phy_sts_t checkEther(void)
     }
    
     rssi_peak = rssi_cur/rssiCnt;
-		LOG("Carr %d\r\n",rssi_peak);
     if (rssi_peak < m_config.cca_treshhold) {
         return PHY_CCA_IDLE;
     } else {
@@ -355,10 +360,10 @@ phy_sts_t CSMA()
 	
 }
 */
+
 void ZBRFPHY_IRQHandler(void)
 {
 		HAL_ENTER_CRITICAL_SECTION();
-		LOG("Entered IRQ\r\n");
     data_rssi packet = {0};
 		uint8_t buffer[140] = {0};
     uint8_t zbRssi=0;
@@ -366,7 +371,6 @@ void ZBRFPHY_IRQHandler(void)
     uint8_t zbCarrSens=0;
     uint32_t rts = radio_timestamp();
     irqflag = ll_hw_get_irq_status();
-		LOG(" Flag: %08x \r\n", irqflag);
     if (!(irqflag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
 				LOG("Mode is not done\r\n");
@@ -442,7 +446,6 @@ void ZBRFPHY_IRQHandler(void)
     if( (irqflag & LIRQ_TD) && radio_tx_wait_ack == false)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-        LOG("Switching back to RX\r\n");
 				transfer_pending = false;
         m_config.mode = RX_ONLY;
         phy_rf_rx();
@@ -592,6 +595,8 @@ comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f*
 		
 		while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 		
+		LOG("State of radio is %d",m_state);
+		
     if (ST_RUNNING == m_state)
     {
         err = COMMS_ALREADY;
@@ -625,9 +630,9 @@ static void radio_resend_timeout_cb(void * argument)
 
 
 
-static void stop_radio_now ()
+static void stop_radio_now()
 {
-    info2("stop");
+    LOG("stop");
 
     // Return any pending TX messages with COMMS_EOFF
     // No mutex, queue cannot change - send not accepting msgs in stop state
@@ -661,7 +666,7 @@ static void stop_radio_now ()
 
 static void start_radio_now ()
 {
-    info2("start");
+    LOG("start");
 
     m_radio_channel_current = m_radio_channel_configured;
 
@@ -764,12 +769,9 @@ static void radio_send_message (comms_msg_t * msg)
 				zb_hw_set_stx();
 				ll_hw_go();
 				transfer_pending = true;
-				LOG("Started timeout timer\r\n");
 				osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 				//osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 		} else {
-				ll_hw_rst_tfifo();
-			  zb_hw_set_srx(0);
 				ll_hw_go();
 				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
 		}
@@ -890,6 +892,7 @@ static void handle_radio_tx (uint32_t flags)
         else if (flags & RDFLG_RAIL_SEND_BUSY)
         {
             bool resend = false;
+						transfer_pending = false;
 
             //osTimerStop(m_send_timeout_timer);
 
@@ -921,6 +924,7 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has failed in some generic way ------------------------------
         else if (flags & RDFLG_RADIO_SEND_FAIL)
         {
+						transfer_pending = false;
             signal_send_done(COMMS_FAIL);
         }
         // Sending has not completed in a reasonable amount of time ------------
@@ -931,6 +935,7 @@ static void handle_radio_tx (uint32_t flags)
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
                 err1("TIMEOUT\r\n");
+								transfer_pending = false;
                 signal_send_done(COMMS_ETIMEOUT);
 
                 // Presumably something is wrong with the radio
@@ -1096,6 +1101,7 @@ static void radio_task(void *arg)
 		 
         if (ST_STARTING == state)
         {
+						LOG("Starting radio now");
             start_radio_now();
             //running = true;
         }
@@ -1103,16 +1109,8 @@ static void radio_task(void *arg)
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
-            warn1("restart");
+            LOG("restart");
 						zb_hw_stop();
-
-					/*
-            m_rail_handle = radio_rail_init();
-            if (m_rail_handle == NULL)
-            {
-                sys_panic("rail");
-            }
-					*/
 
             // If sending, cancel and notify user
             if (NULL != radio_msg_sending)
@@ -1124,12 +1122,6 @@ static void radio_task(void *arg)
         // Handle TX activities
         handle_radio_tx(flags);
 
-				/*
-				zb_hw_stop();
-				zb_hw_set_srx(10000);
-				ll_hw_rst_rfifo();
-				zb_hw_go();
-*/
         // Check RX queue and process any messages there
         handle_radio_rx(); //TODO: uncomment
 
@@ -1142,7 +1134,7 @@ static void radio_task(void *arg)
             {
                 zb_hw_stop(); // Will return queued messages
 								zb_hw_timing();
-                //running = false;
+								stop_radio_now();
             }
             else
             {
@@ -1154,7 +1146,7 @@ static void radio_task(void *arg)
         {
             if (state == ST_OFF)
             {
-                debug1("deinit");
+                LOG("deinit");
                 osThreadExit();
             }
         }
