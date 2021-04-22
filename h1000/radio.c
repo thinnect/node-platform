@@ -241,7 +241,7 @@ static uint8_t  zbll_hw_read_rfifo_zb(uint8_t* rxPkt, uint16_t* pktLen, uint32_t
 
 static uint32_t radio_timestamp ()
 {
-    return read_current_fine_time();
+    return osKernelGetTickCount();
 }
 
 uint8_t rf_getRssi(void)
@@ -260,7 +260,7 @@ uint8_t rf_carriersense(void)
     uint16_t foff = 0;
     uint8_t carrSens = 0;
     rf_phy_get_pktFoot(&rssi_cur,&foff,&carrSens);
-		//LOG(" Carrier sense : %d \r\n", carrSens);
+		//debug1(" Carrier sense : %d \r\n", carrSens);
 		//rf_phy_get_pktFoot_fromPkt(m_foot[0],m_foot[1], &rssi_cur,&foff,&carrSens);
     return carrSens;
 }
@@ -284,7 +284,7 @@ phy_sts_t rf_performCCA(void)
     }
    
     rssi_peak = rssi_cur/rssiCnt;
-		LOG("RSSI_peak %d\r\n",rssi_peak);
+		debug1("RSSI_peak %d\r\n",rssi_peak);
     if (rssi_peak < m_config.cca_treshhold) {
         return PHY_CCA_BUSY;
     } else {
@@ -373,7 +373,7 @@ void ZBRFPHY_IRQHandler(void)
     irqflag = ll_hw_get_irq_status();
     if (!(irqflag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
-				LOG("Mode is not done\r\n");
+				debug1("Mode is not done\r\n");
         ll_hw_clr_irq();
 				HAL_EXIT_CRITICAL_SECTION();			// clear irq status
         return;
@@ -410,7 +410,7 @@ void ZBRFPHY_IRQHandler(void)
 														uint8_t len = packet.buffer[0];
 
                             uint32_t airTimeUs = ((len+1)*8) * 4; // packet length / transmission speed
-                            rts = rts -airTimeUs;
+                            rts = rts -2;//airTimeUs;
                             // Replace used CRC with timestamp
                             packet.buffer[len-1] = rts >> 24;
                             packet.buffer[len] = rts >> 16;
@@ -421,7 +421,7 @@ void ZBRFPHY_IRQHandler(void)
                             int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                             if(osOK != res)
                             {
-                                LOG("Failed to put message in queue %i\r\n", res);
+                                debug1("Failed to put message in queue %i\r\n", res);
                             }
                             else
                             {
@@ -458,7 +458,7 @@ void ZBRFPHY_IRQHandler(void)
     }
     if(irqflag & LIRQ_RTO)
     {
-        LOG("RX Timed out");
+        debug1("RX Timed out");
     }
 
     ll_hw_clr_irq();
@@ -595,7 +595,7 @@ comms_error_t radio_start(comms_layer_iface_t* interface, comms_status_change_f*
 		
 		while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 		
-		LOG("State of radio is %d",m_state);
+		debug1("State of radio is %d",m_state);
 		
     if (ST_RUNNING == m_state)
     {
@@ -632,7 +632,7 @@ static void radio_resend_timeout_cb(void * argument)
 
 static void stop_radio_now()
 {
-    LOG("stop");
+    debug1("stop");
 
     // Return any pending TX messages with COMMS_EOFF
     // No mutex, queue cannot change - send not accepting msgs in stop state
@@ -666,7 +666,7 @@ static void stop_radio_now()
 
 static void start_radio_now ()
 {
-    LOG("start");
+    debug1("start");
 
     m_radio_channel_current = m_radio_channel_configured;
 
@@ -687,6 +687,7 @@ static void radio_send_message (comms_msg_t * msg)
         sys_panic("snull");
     }
 
+		debug1("tx");
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
     //RAIL_Status_t rslt;
     uint16_t count, total;
@@ -737,14 +738,16 @@ static void radio_send_message (comms_msg_t * msg)
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
-        uint32_t evt_time, diff;
+        uint32_t evt_time, diff, ti;
         //debug1("evt time valid");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
-        evt_time = comms_get_event_time_us(iface, msg);
-        diff = evt_time - (radio_timestamp()+520); // It will take at least 250us to get the packet going, round it up
+        //evt_time = comms_get_event_time_us(iface, msg);
+			evt_time = comms_get_event_time(iface, msg);
+			ti = radio_timestamp();
+        diff = evt_time - (+1); // It will take at least 250us to get the packet going, round it up
 
-			  //LOG("diff: %d\r\n", diff);
+			  //debug1("diff: %d\r\n", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
         buffer[14+count] = diff>>16;
@@ -800,7 +803,8 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-			comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
+			//comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
@@ -810,7 +814,7 @@ static void signal_send_done (comms_error_t err)
     }
 
 		/*
-    logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
+    debug1ger(err==COMMS_SUCCESS?debug1_INFO3:debug1_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
            msgp, err,
            qtime,
@@ -818,6 +822,7 @@ static void signal_send_done (comms_error_t err)
 		*/
 
     //assert(NULL != send_done);
+		debug1("snt");
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 }
 
@@ -874,7 +879,7 @@ static void handle_radio_tx (uint32_t flags)
                 resend = true;
             }
 
-            /*logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
+            /*debug1ger(resend?debug1_DEBUG1:debug1_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
                    comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
                    comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
 						*/
@@ -991,7 +996,8 @@ static void handle_radio_rx()
 						amid = packet.buffer[(len-6)];
 						plen = len - 18;
 
-						comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						//comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+						comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
 				}
 				else
 				{
@@ -1009,7 +1015,8 @@ static void handle_radio_rx()
 						comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
 						memcpy(payload, (const void *)&packet.buffer[12], plen);
 
-						comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
+						comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
+					//comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
 						int16_t rssi = packet.rssi; 
 						mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
@@ -1101,7 +1108,7 @@ static void radio_task(void *arg)
 		 
         if (ST_STARTING == state)
         {
-						LOG("Starting radio now");
+						debug1("Starting radio now");
             start_radio_now();
             //running = true;
         }
@@ -1109,7 +1116,7 @@ static void radio_task(void *arg)
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
-            LOG("restart");
+            debug1("restart");
 						zb_hw_stop();
 
             // If sending, cancel and notify user
@@ -1146,7 +1153,7 @@ static void radio_task(void *arg)
         {
             if (state == ST_OFF)
             {
-                LOG("deinit");
+                debug1("deinit");
                 osThreadExit();
             }
         }
