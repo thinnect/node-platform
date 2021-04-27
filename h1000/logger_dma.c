@@ -14,7 +14,7 @@
 #include "log.h"
 
 #define UART_0_BASE 0x40004000
-#define LOGGER_DMA_BUF_SIZE 4096
+#define LOGGER_DMA_BUF_SIZE 512
 #define LOGGER_LDMA_MAX_TRANSFER 512
 #define LOGGER_THREAD_FLAG_LDMA_DONE 0x00000001U
 #define LOGGER_THREAD_FLAG_NEW_DATA  0x00000010U
@@ -183,7 +183,7 @@ bool logger_dma_init()
 {
 		bool ret = true;
 		ret = hal_dma_init();
-		const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 1024 };
+		const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 2048};
 		m_log_mutex = osMutexNew(NULL);
 
 	  HAL_DMA_t ch_cfg;

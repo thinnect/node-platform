@@ -680,7 +680,7 @@ static void start_radio_now ()
 
 static void radio_send_message (comms_msg_t * msg)
 {
-    __align(4) static uint8_t buffer[160] = {0};
+    __packed uint8_t buffer[160] = {0};
 
     if (NULL == msg)
     {
