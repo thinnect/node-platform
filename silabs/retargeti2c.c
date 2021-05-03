@@ -19,12 +19,16 @@
 #define __LOG_LEVEL__ (LOG_LEVEL_retargeti2c & BASE_LOG_LEVEL)
 #include "log.h"
 
+#ifndef RETARGET_I2C_FREQ
+#define RETARGET_I2C_FREQ I2C_FREQ_STANDARD_MAX
+#endif//RETARGET_I2C_FREQ
+
 static platform_mutex_t i2c_mutex;
 static platform_mutex_t i2c_transaction_mutex;
 
 void RETARGET_I2CInit() {
 	I2C_Init_TypeDef i2cInit = I2C_INIT_DEFAULT;
-	i2cInit.freq = I2C_FREQ_FAST_MAX;
+	i2cInit.freq = RETARGET_I2C_FREQ;
 
 	i2c_mutex = platform_mutex_new("i2c");
 	i2c_transaction_mutex = platform_mutex_new("i2c_ta");
