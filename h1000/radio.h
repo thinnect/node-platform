@@ -78,6 +78,12 @@ typedef struct {
 } __attribute__((packed)) mac_frame_t;
 
 typedef struct {
+	uint8_t len;
+	uint8_t fcf[2];
+	uint8_t tx_num;
+} __attribute__((packed)) ack_pack_t;
+
+typedef struct {
 	int16_t rssi;
 	uint8_t buffer[140];
 } __attribute__((packed)) data_rssi;

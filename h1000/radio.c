@@ -34,6 +34,7 @@
 #define RDFLG_RAIL_TXACK_SENT     (1 << 17)
 #define RDFLG_RAIL_RXACK_TIMEOUT  (1 << 18)
 #define RDFLG_RAIL_RX_MORE        (1 << 20)
+#define RDFLG_RADIO_ACK						(1 << 21)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -113,6 +114,9 @@ static uint8_t m_radio_channel_current;
 static uint32_t m_stop_timestamp;
 
 static bool transfer_pending = false;
+static bool sending_ack = false;
+
+static uint8_t ack_seq = 0;
 
 static void zb_hw_go(void)
 {
@@ -333,7 +337,7 @@ void phy_rf_rx(void)
 		//zb_hw_set_trx(0);
 	
     //ll_hw_rst_tfifo();
-    ll_hw_rst_rfifo();
+    //ll_hw_rst_rfifo();
     set_max_length(0xff);
 
     zb_hw_go();
@@ -389,23 +393,24 @@ void ZBRFPHY_IRQHandler(void)
             {
 								memcpy(&packet.buffer[0],&buffer[0],140);
                 mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-                if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
+								if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
+                {
+                  if (radio_tx_wait_ack)
+                  {
+                     osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+                  }
+
+								} else if((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
                 {
                     if(frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
                     {
                         //is ackknowledge packet
-                        if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
-                        {
-                            if (radio_tx_wait_ack)
-                            {
-                                osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-                            }
-                        } else {
+                        
                             if(frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT)
                             {
-                                //need immidiate ack response
+																ack_seq = packet.buffer[3]; // ??? FOR SURE THIS GONNA BRING PROBLEMS LATER ON
+                                osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_ACK);
                             }
-                        }
                         // Receive timestamp, added to message buffer
 														uint8_t len = packet.buffer[0];
 
@@ -426,12 +431,7 @@ void ZBRFPHY_IRQHandler(void)
                             else
                             {
                                 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-                                phy_rf_rx();
                             }
-                        }
-                        else
-                        {
-                            phy_rf_rx();
                         }
                     }
                 }
@@ -442,14 +442,18 @@ void ZBRFPHY_IRQHandler(void)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
     }
-
-    if( (irqflag & LIRQ_TD) && radio_tx_wait_ack == false)
+		
+		if( (irqflag & LIRQ_TD))
     {
-        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 				transfer_pending = false;
-        m_config.mode = RX_ONLY;
-        phy_rf_rx();
-
+				if(sending_ack)
+				{
+					 sending_ack = false;
+				}	
+				else if(!radio_tx_wait_ack)
+				{
+					osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+				}
     }
 
     if(irqflag & LIRQ_CERR)
@@ -461,6 +465,7 @@ void ZBRFPHY_IRQHandler(void)
         LOG("RX Timed out");
     }
 
+		
     ll_hw_clr_irq();
 		phy_rf_rx();
     HAL_EXIT_CRITICAL_SECTION();
@@ -470,6 +475,7 @@ comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms
 {
 
 		comms_error_t err = COMMS_FAIL;
+
 
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
     {
@@ -801,7 +807,7 @@ static void signal_send_done (comms_error_t err)
     if (err == COMMS_SUCCESS)
     {
 			comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
+      //_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
     if (qtime > 20)
@@ -1060,6 +1066,32 @@ static void radio_send_next()
     }
 }
 
+static void send_ack_packet()
+{
+	
+	__align(4) static uint8_t buffer[160] = {0};
+	
+	buffer[0] = 0x05;
+	buffer[1] = 0x02;
+	buffer[2] = 0x0;
+	buffer[3] = ack_seq;
+	
+	sending_ack = true;
+  transfer_pending = true;
+	
+	zb_hw_stop();
+	zb_hw_timing();
+	osDelay(5);
+	
+	ll_hw_rst_tfifo();
+	ll_hw_write_tfifo(&buffer[0], 5);
+	
+	zb_hw_set_stx();
+	osDelay(5);
+	ll_hw_go();
+	
+}
+
 static void handle_radio_events (uint32_t flags)
 {
     if ( flags & RDFLG_RAIL_RX_OVERFLOW )
@@ -1081,6 +1113,12 @@ static void handle_radio_events (uint32_t flags)
     {
 
     }
+		
+		if ( flags & RDFLG_RADIO_ACK )
+		{
+			debug1("Sending ack");
+			send_ack_packet();
+		}
 }
 
 
@@ -1118,15 +1156,15 @@ static void radio_task(void *arg)
                 flags |= RDFLG_RADIO_SEND_FAIL;
             }
         }
+				
+				        // Handle "other" events
+        handle_radio_events(flags);
 
         // Handle TX activities
         handle_radio_tx(flags);
 
         // Check RX queue and process any messages there
         handle_radio_rx(); //TODO: uncomment
-
-        // Handle "other" events
-        handle_radio_events(flags);
 
         if (radio_msg_sending == NULL)
         {
@@ -1192,7 +1230,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		}
 
 		const osThreadAttr_t main_thread_attr = {.name = "radio"};
-        m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
+    m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
 
 		if(NULL == m_config.threadid)
 		{
