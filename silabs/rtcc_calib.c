@@ -30,16 +30,25 @@ extern void vPortExitCritical();
 #define __LOG_LEVEL__ (LOG_LEVEL_rtcc_calib & BASE_LOG_LEVEL)
 #include "log.h"
 
+#ifndef RTCC_CALIB_STABIL_S
+#define RTCC_CALIB_STABIL_S 10
+#endif//RTCC_CALIB_STABIL_S
+
+#ifndef RTCC_CALIB_TIME_S
+#define RTCC_CALIB_TIME_S 60
+#endif//RTCC_CALIB_TIME_S
+
 #if defined(_SILICON_LABS_32B_SERIES_2)
-#define RTCC_TEST_REFERENCE TIMER0
-#define RTCC_TEST_REFERENCE_CLOCK cmuClock_TIMER0
+#define RTCC_CALIB_REFERENCE TIMER0
+#define RTCC_CALIB_REFERENCE_CLOCK cmuClock_TIMER0
 #else
-#define RTCC_TEST_REFERENCE WTIMER0
-#define RTCC_TEST_REFERENCE_CLOCK cmuClock_WTIMER0
+#define RTCC_CALIB_REFERENCE WTIMER0
+#define RTCC_CALIB_REFERENCE_CLOCK cmuClock_WTIMER0
 #endif
 
 static uint32_t m_period_ms;
 static freq_set_f * m_setfunc;
+static osThreadId_t m_calib_thread;
 
 static void ref_timer_enable ()
 {
@@ -63,22 +72,22 @@ static void ref_timer_enable ()
     #if defined(_SILICON_LABS_32B_SERIES_2)
         CMU_ClockSelectSet(cmuClock_EM01GRPACLK, cmuSelect_HFXO);
     #endif
-    CMU_ClockEnable(RTCC_TEST_REFERENCE_CLOCK, true);
+    CMU_ClockEnable(RTCC_CALIB_REFERENCE_CLOCK, true);
 
-    TIMER_Reset(RTCC_TEST_REFERENCE);
-    TIMER_Init(RTCC_TEST_REFERENCE, &timerInit);
-    TIMER_TopSet(RTCC_TEST_REFERENCE, 0xFFFFFFFF);
-    TIMER_Enable(RTCC_TEST_REFERENCE, true);
+    // TIMER_Reset(RTCC_CALIB_REFERENCE);
+    TIMER_Init(RTCC_CALIB_REFERENCE, &timerInit);
+    TIMER_TopSet(RTCC_CALIB_REFERENCE, 0xFFFFFFFF);
+    TIMER_Enable(RTCC_CALIB_REFERENCE, true);
 }
 
 static uint32_t ref_timer_get ()
 {
-    return TIMER_CounterGet(RTCC_TEST_REFERENCE);
+    return TIMER_CounterGet(RTCC_CALIB_REFERENCE);
 }
 
 static void ref_timer_disable ()
 {
-    TIMER_Enable(RTCC_TEST_REFERENCE, false);
+    TIMER_Enable(RTCC_CALIB_REFERENCE, false);
 }
 
 uint32_t rtcc_calibrate_now ()
@@ -87,13 +96,13 @@ uint32_t rtcc_calibrate_now ()
     debug1("stblzng");
 
     watchdog_feed();
-    while(ref_timer_get() < 10 * 37500UL);
+    while(ref_timer_get() < RTCC_CALIB_STABIL_S * 37500UL);
 
     debug1("clbrtng");
     uint32_t tmr = ref_timer_get();
     uint32_t rtc = RTCC_CounterGet();
 
-    for(uint8_t i=0;i<=60;i+=10)
+    for(uint8_t i=0;i<=RTCC_CALIB_TIME_S;i+=1)
     {
         watchdog_feed();
         while(ref_timer_get() - tmr < i * 37500UL);
@@ -112,40 +121,72 @@ uint32_t rtcc_calibrate_now ()
     return freq;
 }
 
+void rtcc_disable_calibration ()
+{
+    if (NULL != m_calib_thread)
+    {
+        osThreadFlagsSet(m_calib_thread, 1);
+        // osThreadJoin(m_calib_thread); // not supported on all CMSIS versions
+        while (osThreadTerminated != osThreadGetState(m_calib_thread))
+        {
+            osDelay(10);
+        }
+        m_calib_thread = NULL;
+    }
+    else
+    {
+        ref_timer_disable();
+    }
+
+    TIMER_Reset(RTCC_CALIB_REFERENCE);
+
+    debug1("dsbld");
+}
+
 static void calibration_loop (void *arg)
 {
     for(;;)
     {
-        osDelay(m_period_ms);
+        uint32_t flags = osThreadFlagsWait(1, osFlagsWaitAny, m_period_ms);
+        if (flags == osFlagsErrorTimeout)
+        {
+            SLEEP_SleepBlockBegin(sleepEM2); // Must block sleep modes that stop the reference timer
 
-        SLEEP_SleepBlockBegin(sleepEM2); // Must block sleep modes that stop the reference timer
+            ref_timer_enable();
+            debug1("stblzng");
 
-        ref_timer_enable();
-        debug1("stblzng");
+            osDelay(RTCC_CALIB_STABIL_S*1000); // Wait RTCC_CALIB_STABIL_S seconds for things to stabilize
 
-        osDelay(10000); // Wait 10 seconds for things to stabilize
+            debug1("clbrtng");
 
-        debug1("clbrtng");
+            vPortEnterCritical();
+            uint32_t tmr = ref_timer_get();
+            uint32_t rtc = RTCC_CounterGet();
+            vPortExitCritical();
 
-        vPortEnterCritical();
-        uint32_t tmr = ref_timer_get();
-        uint32_t rtc = RTCC_CounterGet();
-        vPortExitCritical();
+            osDelay(RTCC_CALIB_TIME_S*1000); // Run both timers for RTCC_CALIB_TIME_S seconds
 
-        osDelay(60000); // Run both timers for 60 seconds
+            vPortEnterCritical();
+            uint32_t etmr = ref_timer_get();
+            uint32_t ertc = RTCC_CounterGet();
+            vPortExitCritical();
 
-        vPortEnterCritical();
-        uint32_t etmr = ref_timer_get();
-        uint32_t ertc = RTCC_CounterGet();
-        vPortExitCritical();
+            ref_timer_disable();
+            SLEEP_SleepBlockEnd(sleepEM2);
 
-        ref_timer_disable();
-        SLEEP_SleepBlockEnd(sleepEM2);
+            uint32_t freq = (uint32_t)(((uint64_t)37500)*(ertc - rtc)/(etmr - tmr));
+            debug1("rtc: %u/%u tmr: %u/%u freq %"PRIu32, rtc, ertc, tmr, etmr, freq);
 
-        uint32_t freq = (uint32_t)(((uint64_t)37500)*(ertc - rtc)/(etmr - tmr));
-        debug1("rtc: %u/%u tmr: %u/%u freq %"PRIu32, rtc, ertc, tmr, etmr, freq);
-
-        m_setfunc(freq);
+            if (NULL != m_setfunc)
+            {
+                m_setfunc(freq);
+            }
+        }
+        else
+        {
+            debug1("exit");
+            osThreadExit();
+        }
     }
 }
 
@@ -155,6 +196,6 @@ void rtcc_configure_periodic_calibration (uint32_t period_ms, freq_set_f * setfu
     m_period_ms = period_ms;
     m_setfunc = setfunc;
 
-    const osThreadAttr_t calib_thread_attr = { .name = "calib" };
-    osThreadNew(calibration_loop, NULL, &calib_thread_attr);
+    const osThreadAttr_t calib_thread_attr = { .name = "calib", .stack_size = 1024 };
+    m_calib_thread = osThreadNew(calibration_loop, NULL, &calib_thread_attr);
 }

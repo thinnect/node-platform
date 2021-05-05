@@ -30,11 +30,11 @@ uint8_t platform_i2c_count ()
 	return PLATFORM_I2C_COUNT;
 }
 
-bool platform_i2c_request (void * adc, uint32_t timeout_ms)
+bool platform_i2c_request (void * dev, uint32_t timeout_ms)
 {
 	for(uint8_t i=0;i<PLATFORM_I2C_COUNT;i++)
 	{
-		if (adc == m_i2cs[i])
+		if (dev == m_i2cs[i])
 		{
 			if (osOK == osSemaphoreAcquire(m_i2c_semaphores[i], timeout_ms))
 			{
@@ -46,11 +46,11 @@ bool platform_i2c_request (void * adc, uint32_t timeout_ms)
 	return false;
 }
 
-void platform_i2c_release (void * adc)
+void platform_i2c_release (void * dev)
 {
 	for(uint8_t i=0;i<PLATFORM_I2C_COUNT;i++)
 	{
-		if (adc == m_i2cs[i])
+		if (dev == m_i2cs[i])
 		{
 			osSemaphoreRelease(m_i2c_semaphores[i]);
 			break;

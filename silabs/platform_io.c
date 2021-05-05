@@ -32,6 +32,9 @@ void PLATFORM_LedsInit ()
     #ifdef PLATFORM_LED2_PORT
     GPIO_PinModeSet(PLATFORM_LED2_PORT, PLATFORM_LED2_PIN, gpioModePushPull, 0);
     #endif
+    #ifdef PLATFORM_LED3_PORT
+    GPIO_PinModeSet(PLATFORM_LED3_PORT, PLATFORM_LED3_PIN, gpioModePushPull, 0);
+    #endif
 }
 
 #if PLATFORM_LED_COUNT > 0
@@ -95,6 +98,16 @@ void PLATFORM_LedsSet (uint8_t leds)
         ledSet(PLATFORM_LED2_PORT, PLATFORM_LED2_PIN, false);
     }
     #endif
+    #ifdef PLATFORM_LED3_PORT
+    if(leds & 8)
+    {
+        ledSet(PLATFORM_LED3_PORT, PLATFORM_LED3_PIN, true);
+    }
+    else
+    {
+        ledSet(PLATFORM_LED3_PORT, PLATFORM_LED3_PIN, false);
+    }
+    #endif
 }
 
 #if PLATFORM_LED_COUNT > 0
@@ -123,6 +136,9 @@ uint8_t PLATFORM_LedsGet ()
     #endif
     #ifdef PLATFORM_LED2_PORT
     leds |= (ledGet(PLATFORM_LED2_PORT, PLATFORM_LED2_PIN) << 2);
+    #endif
+    #ifdef PLATFORM_LED3_PORT
+    leds |= (ledGet(PLATFORM_LED3_PORT, PLATFORM_LED3_PIN) << 3);
     #endif
 
     return leds;
