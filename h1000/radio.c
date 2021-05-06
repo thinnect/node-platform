@@ -653,7 +653,7 @@ static void radio_resend_timeout_cb(void * argument)
 
 static void stop_radio_now()
 {
-   // debug1("stop");
+    debug1("stop");
 
     // Return any pending TX messages with COMMS_EOFF
     // No mutex, queue cannot change - send not accepting msgs in stop state
@@ -766,7 +766,7 @@ static void radio_send_message (comms_msg_t * msg)
         //evt_time = comms_get_event_time_us(iface, msg);
 			evt_time = comms_get_event_time(iface, msg);
 			ti = radio_timestamp();
-        diff = evt_time - (ti+1); // It will take at least 250us to get the packet going, round it up
+        diff = evt_time - (ti+5); // It will take at least 250us to get the packet going, round it up
 
 			  //debug1("diff: %d", diff);
         buffer[12+count] = amid; // Actual AMID is carried after payload
@@ -861,7 +861,7 @@ static void signal_send_done (comms_error_t err)
 		*/
 
     //assert(NULL != send_done);
-		debug1("snt: %p", msgp);
+		//debug1("snt: %p", msgp);
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 }
 
@@ -1143,14 +1143,28 @@ static void handle_radio_events (uint32_t flags)
 
 static void radio_task(void *arg)
 {
+	bool running =false;
 	while(1)
 	{
-
-		//bool running = false;
-
-		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 		uint32_t state;
-
+		//uint32_t flags = osFlagsErrorTimeout;
+		
+	/*	while(osFlagsErrorTimeout == flags)
+		{
+			uint32_t wait = osWaitForever;
+			if ((running) || (NULL != radio_msg_queue_head))
+			{
+				wait = 1;
+			}
+			flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
+		}
+		*/
+		uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 1);
+		if (flags == osFlagsErrorTimeout)
+		{
+			flags = 0;
+		}
+		
 		 while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
      state = m_state;
      osMutexRelease(m_radio_mutex);
@@ -1160,8 +1174,10 @@ static void radio_task(void *arg)
         {
 						//debug1("Starting radio now");
             start_radio_now();
-            //running = true;
+            running = true;
         }
+				
+				
 		
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
@@ -1192,6 +1208,7 @@ static void radio_task(void *arg)
                 //zb_hw_stop(); // Will return queued messages
 								//zb_hw_timing();
 								stop_radio_now();
+								running = false;
             }
             else
             {
