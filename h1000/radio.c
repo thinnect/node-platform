@@ -752,6 +752,7 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 		debug1("tx: %02X", buffer[12]);
+		// debug1("tx: %02X %p %u", buffer[12], msg, osKernelGetTickCount());
 
 	//	zb_hw_set_trx(0);
     
@@ -861,7 +862,8 @@ static void signal_send_done (comms_error_t err)
 		*/
 
     //assert(NULL != send_done);
-		//debug1("snt: %p", msgp);
+		// debug1("snt: %p", msgp);
+		// debug1("snt: %p %u", msgp, osKernelGetTickCount());
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 }
 
