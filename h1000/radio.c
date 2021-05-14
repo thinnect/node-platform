@@ -11,6 +11,7 @@
 
 
 #define RADIO_MAX_SEND_TIME_MS 10000UL
+#define RADIO_WAIT_FOR_ACK_MS 5000UL
 
 // Thread flag definitions
 #define RDFLG_RADIO_DEINIT        (1 << 0)
@@ -35,6 +36,7 @@
 #define RDFLG_RAIL_RXACK_TIMEOUT  (1 << 18)
 #define RDFLG_RAIL_RX_MORE        (1 << 20)
 #define RDFLG_RADIO_ACK						(1 << 21)
+#define RDFLG_RADIO_STRT_ACK_TIM  (1 << 22)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -100,6 +102,7 @@ static RadioState_t m_state = ST_UNINITIALIZED;
 
 static osTimerId_t m_send_timeout_timer;
 static osTimerId_t m_resend_timer;
+static osTimerId_t m_ack_timer;
 
 static uint32_t m_radio_send_timestamp;
 
@@ -115,6 +118,7 @@ static uint32_t m_stop_timestamp;
 
 static bool transfer_pending = false;
 static bool sending_ack = false;
+
 
 static uint8_t ack_seq = 0;
 
@@ -454,6 +458,10 @@ void ZBRFPHY_IRQHandler(void)
 				{
 					osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 				}
+				else if(radio_tx_wait_ack)
+				{
+					osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
+				}
     }
 
     if(irqflag & LIRQ_CERR)
@@ -632,6 +640,11 @@ static void radio_send_timeout_cb (void * argument)
 static void radio_resend_timeout_cb(void * argument)
 {
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_RESEND);
+}
+
+static void radio_ack_timeout_cb(void *arg)
+{
+		osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RXACK_TIMEOUT);
 }
 
 
@@ -900,8 +913,6 @@ static void handle_radio_tx (uint32_t flags)
             bool resend = false;
 						transfer_pending = false;
 
-            //osTimerStop(m_send_timeout_timer);
-
             if (m_csma_retries < 7)
             {
                 resend = true;
@@ -1114,6 +1125,11 @@ static void handle_radio_events (uint32_t flags)
 
     }
 		
+		if( flags & RDFLG_RADIO_STRT_ACK_TIM)
+		{
+			osTimerStart(m_ack_timer, RDFLG_RADIO_STRT_ACK_TIM);
+		}
+		
 		if ( flags & RDFLG_RADIO_ACK )
 		{
 			debug1("Sending ack");
@@ -1252,6 +1268,7 @@ radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 		m_radio_mutex = osMutexNew(NULL);
     m_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
     m_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
+		m_ack_timer = osTimerNew(&radio_ack_timeout_cb, osTimerOnce, NULL, NULL);
 
 		m_state = ST_OFF;
 
