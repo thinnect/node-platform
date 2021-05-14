@@ -29,7 +29,7 @@ void basic_nw_time_changed (uint32_t offset)
 	if((time_t)(-1) == rtc)
 	{
 		debug1("first"); // Clock totally off, assume it's still the century when the image was built
-		rtc = IDENT_TIMESTAMP;
+		rtc = 1234;
 	}
 
 	rtc = yxk_time(yxk, &rtc);
