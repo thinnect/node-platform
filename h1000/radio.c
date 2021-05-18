@@ -35,7 +35,7 @@
 #define RDFLG_RAIL_TXACK_SENT     (1 << 17)
 #define RDFLG_RAIL_RXACK_TIMEOUT  (1 << 18)
 #define RDFLG_RAIL_RX_MORE        (1 << 20)
-#define RDFLG_RADIO_ACK						(1 << 21)
+#define RDFLG_RADIO_ACK           (1 << 21)
 #define RDFLG_RADIO_STRT_ACK_TIM  (1 << 22)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
@@ -159,20 +159,28 @@ static void zb_hw_go(void)
 
 static void zb_hw_stop(void)
 {
-		uint8_t cnt=0;
+	uint8_t cnt=0;
     /*
-		subWriteReg(AP_PCR_BASE+0x0c,10,10,0);//reset bbll
+	subWriteReg(AP_PCR_BASE+0x0c,10,10,0);  //reset bbll
 
     PHY_REG_WT( 0x400300a4,0x00000140);     // clr tx_auto
     PHY_REG_WT( 0x400300a0,0x0000000e);     // clr pll_auto override
     PHY_REG_WT( 0x400300a0,0x00000000);     // clr pll_auto override
 
-    subWriteReg(AP_PCR_BASE+0x0c,10,10,1);//release bbll reset
+    subWriteReg(AP_PCR_BASE+0x0c,10,10,1);  //release bbll reset
 	*/
-		ll_hw_set_rx_timeout(33);//will trigger ll_hw_irq=RTO
-    //while(llWaitingIrq){WaitRTCCount(3);cnt++;if(cnt>10){err1("PHY STOP ERR");break;}};
-		while(llWaitingIrq){WaitRTCCount(3);cnt++;};
-		debug1("cnt: %d", cnt);
+	ll_hw_set_rx_timeout(33);//will trigger ll_hw_irq=RTO
+    while(llWaitingIrq)
+    {
+        WaitRTCCount(3);
+        cnt++;
+        if(cnt > 10)
+        {
+            err1("PHY STOP ERR");
+            break;
+        }
+    }
+	// debug1("cnt: %d", cnt);
 }
 
 static void zb_hw_timing(void)
@@ -457,12 +465,12 @@ void ZBRFPHY_IRQHandler(void)
                         else
                         {
                             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-                            phy_rf_rx();
+                            // phy_rf_rx();
                         }
                     }
                     else
                     {
-                        phy_rf_rx();
+                        // phy_rf_rx();
                     }
                 }
             }
@@ -474,19 +482,20 @@ void ZBRFPHY_IRQHandler(void)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
     }
         
-    if( (irqflag & LIRQ_TD))
+    if (irqflag & LIRQ_TD)
     {
         //debug1("txd");
         transfer_pending = false;
-        if(sending_ack)
+        if (sending_ack)
         {
-                sending_ack = false;
+            sending_ack = false;
+            osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
         }	
-        else if(!radio_tx_wait_ack)
+        else if (!radio_tx_wait_ack)
         {
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         }
-        else if(radio_tx_wait_ack)
+        else if (radio_tx_wait_ack)
         {
             osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
         }
@@ -497,16 +506,16 @@ void ZBRFPHY_IRQHandler(void)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
     }
 
-    if(irqflag & LIRQ_RTO)
+    if (0 == (irqflag & LIRQ_RTO))
     {
-        debug1("RX Timed out");
+        // debug1("RX Timed out");
     }
 
     ll_hw_clr_irq();
     
     HAL_EXIT_CRITICAL_SECTION();
     
-    phy_rf_rx();
+    // phy_rf_rx();
 }
 
 static comms_error_t radio_send(comms_layer_iface_t* interface, comms_msg_t* msg, comms_send_done_f* cb, void* user)
@@ -721,6 +730,7 @@ static void start_radio_now ()
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
     m_state = ST_RUNNING;
+    phy_rf_rx();
     osMutexRelease(m_radio_mutex);
 
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
@@ -900,6 +910,7 @@ static void signal_send_done (comms_error_t err)
     //assert(NULL != send_done);
     debug1("snt: %p", msgp);
         // debug1("snt: %p %u", msgp, osKernelGetTickCount());
+    phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 }
 
@@ -1156,7 +1167,7 @@ static void radio_send_next()
 static void send_ack_packet()
 {
     
-    __align(4) static uint8_t buffer[160] = {0};
+    __align(4) static uint8_t buffer[4] = {0};
     
     buffer[0] = 0x05;
     buffer[1] = 0x02;
@@ -1164,53 +1175,54 @@ static void send_ack_packet()
     buffer[3] = ack_seq;
     
     sending_ack = true;
-  transfer_pending = true;
+    transfer_pending = true;
     
     zb_hw_stop();
+    HAL_ENTER_CRITICAL_SECTION();
+    
     zb_hw_timing();
-    osDelay(5);
-    
-    ll_hw_rst_tfifo();
-    ll_hw_write_tfifo(&buffer[0], 5);
-    
+    // ll_hw_rst_tfifo();
     zb_hw_set_stx();
-    osDelay(5);
-    ll_hw_go();
     
+    ll_hw_write_tfifo(&buffer[0], 4);
+    ll_hw_go();
+	llWaitingIrq=TRUE;
+	
+    HAL_EXIT_CRITICAL_SECTION();    
 }
 
 static void handle_radio_events (uint32_t flags)
 {
-    if ( flags & RDFLG_RAIL_RX_OVERFLOW )
+    if (flags & RDFLG_RAIL_RX_OVERFLOW)
     {
-            ll_hw_rst_rfifo();
+        ll_hw_rst_rfifo();
     }
 
-    if ( flags & RDFLG_RAIL_RX_BUSY )
-    {
-
-    }
-
-    if ( flags & RDFLG_RAIL_RXACK_TIMEOUT )
+    if (flags & RDFLG_RAIL_RX_BUSY)
     {
 
     }
 
-    if ( flags & RDFLG_RAIL_TXACK_SENT )
+    if (flags & RDFLG_RAIL_RXACK_TIMEOUT)
     {
 
+    }
+
+    if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
+    {
+        phy_rf_rx();
     }
         
-        if( flags & RDFLG_RADIO_STRT_ACK_TIM)
-        {
-            osTimerStart(m_ack_timer, RDFLG_RADIO_STRT_ACK_TIM);
-        }
-        
-        if ( flags & RDFLG_RADIO_ACK )
-        {
-            debug1("Sending ack");
-            send_ack_packet();
-        }
+    if (flags & RDFLG_RADIO_STRT_ACK_TIM)
+    {
+        osTimerStart(m_ack_timer, RDFLG_RADIO_STRT_ACK_TIM);
+    }
+    
+    if (flags & RDFLG_RADIO_ACK)
+    {
+        debug1("Sending ack");
+        send_ack_packet();
+    }
 }
 
 
