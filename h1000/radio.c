@@ -83,6 +83,8 @@ typedef enum RadioState
 
 
 extern void hal_rom_boot_init(void);
+extern volatile uint32 llWaitingIrq;
+extern uint32_t ll_hw_get_tr_mode(void);
 
 static uint8_t m_rxBuf[127] ={0};
 static uint16_t volatile irqflag = 0;
@@ -128,6 +130,11 @@ static uint8_t ack_seq = 0;
 
 static void zb_hw_go(void)
 {
+		if (llWaitingIrq==TRUE)
+    {
+        err1("PHY TRIG ERR");
+    }
+	
     *(volatile uint32_t *)(LL_HW_BASE+ 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
     *(volatile uint32_t *)(LL_HW_BASE+ 0x0c) = 0x0001;            //mask irq :only use mode done
     *(volatile uint32_t *)(LL_HW_BASE+ 0x00) = 0x0001;            //trig
@@ -152,13 +159,20 @@ static void zb_hw_go(void)
 
 static void zb_hw_stop(void)
 {
-    subWriteReg(AP_PCR_BASE+0x0c,10,10,0);//reset bbll
+		uint8_t cnt=0;
+    /*
+		subWriteReg(AP_PCR_BASE+0x0c,10,10,0);//reset bbll
 
     PHY_REG_WT( 0x400300a4,0x00000140);     // clr tx_auto
     PHY_REG_WT( 0x400300a0,0x0000000e);     // clr pll_auto override
     PHY_REG_WT( 0x400300a0,0x00000000);     // clr pll_auto override
 
     subWriteReg(AP_PCR_BASE+0x0c,10,10,1);//release bbll reset
+	*/
+		ll_hw_set_rx_timeout(33);//will trigger ll_hw_irq=RTO
+    //while(llWaitingIrq){WaitRTCCount(3);cnt++;if(cnt>10){err1("PHY STOP ERR");break;}};
+		while(llWaitingIrq){WaitRTCCount(3);cnt++;};
+		debug1("cnt: %d", cnt);
 }
 
 static void zb_hw_timing(void)
@@ -168,7 +182,6 @@ static void zb_hw_timing(void)
     ll_hw_set_rx_tx_interval(20);		//T_IFS=192+2us for ZB 98
     ll_hw_set_tx_rx_interval(22);		//T_IFS=192-6us for ZB 108
     //ll_hw_set_rx_tx_interval(    	60);		//T_IFS=192+2us for ZB 98
-    //ll_hw_set_tx_rx_interval(      66);		//T_IFS=192-6us for ZB 108
 }
 
 static void zb_hw_set_srx(uint32_t rxTimeOutUs)
@@ -353,7 +366,7 @@ void phy_rf_rx(void)
     set_max_length(0xff);
 
     zb_hw_go();
-    //llWaitingIrq=TRUE;
+    llWaitingIrq=TRUE;
     HAL_EXIT_CRITICAL_SECTION();
 }
 
@@ -377,7 +390,6 @@ phy_sts_t CSMA()
 
 void ZBRFPHY_IRQHandler(void)
 {
-        //HAL_ENTER_CRITICAL_SECTION();
     data_rssi packet = {0};
     uint8_t buffer[140] = {0};
     uint8_t zbRssi=0;
@@ -393,9 +405,10 @@ void ZBRFPHY_IRQHandler(void)
         //HAL_EXIT_CRITICAL_SECTION();			// clear irq status
         return;
     }
-    
-    HAL_ENTER_CRITICAL_SECTION();
-    
+		
+		llWaitingIrq = FALSE;
+		
+		HAL_ENTER_CRITICAL_SECTION();
     if(irqflag & LIRQ_COK)
     {
                 
@@ -483,6 +496,7 @@ void ZBRFPHY_IRQHandler(void)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
     }
+
     if(irqflag & LIRQ_RTO)
     {
         debug1("RX Timed out");
@@ -563,7 +577,7 @@ static void rf_wakeup_handler(void){
 
 static void hal_rfphy_init(void)
 {
-    //============config the txPower
+    //`========config the txPower
     g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
     //============config BLE_PHY TYPE
     g_rfPhyPktFmt   = PKT_FMT_ZIGBEE;
@@ -764,11 +778,10 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[10] = 0x3F;
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
-    debug1("tx: %02X", buffer[12]);
-        // debug1("tx: %02X %p %u", buffer[12], msg, osKernelGetTickCount());
+
+		debug1("tx: %02X", buffer[12]);
 
     //	zb_hw_set_trx(0);
-    
 
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
@@ -798,37 +811,49 @@ static void radio_send_message (comms_msg_t * msg)
     }
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
-    total = 1 + 11 + count + 2; // lenb, hdr, data, crc
+    total = 1 + 11 + count + 2; // lenb, hdr, data, crc		
 
-        //ll_hw_write_tfifo(&buffer[0], total);
-        
-        
-        if(checkEther() == PHY_CCA_IDLE)
-        {
-        ll_hw_write_tfifo(&buffer[0], total);
-        hal_gpio_write(GPIO_P01, 1);
-        
-        zb_hw_stop();
-        //HAL_ENTER_CRITICAL_SECTION();
-        zb_hw_timing();
-        osDelay(4); //TODO: check if needed
-                zb_hw_set_stx();
-                //ll_hw_rst_tfifo();
-                ll_hw_rst_rfifo();
-                
-                m_radio_send_timestamp = radio_timestamp();
-                ll_hw_go();
-        //HAL_EXIT_CRITICAL_SECTION();
-                //phy_rf_rx();
-                transfer_pending = true;
-                osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
-                //osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-    
-        } else {
-                ll_hw_go();
-                osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
-        }
+		//ll_hw_write_tfifo(&buffer[0], total);
+		
+		if(checkEther() == PHY_CCA_IDLE)
+		{
+			zb_hw_stop();
+			HAL_ENTER_CRITICAL_SECTION();
 
+			zb_hw_timing();
+			
+			zb_hw_set_stx();
+
+//			ll_hw_rst_rfifo();
+			
+			//need updata phyBufTx
+			ll_hw_write_tfifo(&buffer[0], total);
+
+			ll_hw_go();
+			llWaitingIrq=TRUE;
+			HAL_EXIT_CRITICAL_SECTION();
+			m_radio_send_timestamp = radio_timestamp();
+			transfer_pending = true;
+			osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+/*			
+			ll_hw_write_tfifo(&buffer[0], total);
+			hal_gpio_write(GPIO_P01, 1);
+			
+			zb_hw_stop();
+			zb_hw_timing();
+			osDelay(4); //TODO: check if needed
+			zb_hw_set_stx();
+			ll_hw_rst_rfifo();
+					
+			m_radio_send_timestamp = radio_timestamp();
+			ll_hw_go();
+			transfer_pending = true;
+			osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+*/
+		} else {
+				ll_hw_go();
+				osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
+		}
 }
 
 
