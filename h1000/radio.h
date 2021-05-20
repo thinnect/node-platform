@@ -38,37 +38,36 @@
 #define MAC_FCF_FRAME_TYPE     0x07
 #define MAC_FCF_ACK_PACKET 0x02
 
-typedef enum {
+typedef enum
+{
     PHY_CCA_IDLE       = 0x00,
     PHY_CCA_BUSY       = 0x01,
 } phy_sts_t;
 
-typedef enum {
+typedef enum
+{
 	IDLE = 0x0,
 	BUSY,
 	ERROR,
 	RESET
 } radio_status_t;
 
-typedef enum {
+typedef enum
+{
 	NONE = 0x0,
 	SEND_FAIL
 } radio_errno_t;
 
-/*
-#define LL_HW_MODE_STX                  0x00
-#define LL_HW_MODE_SRX                  0x01
-#define LL_HW_MODE_TRX                  0x02
-#define LL_HW_MODE_RTX                  0x03
-*/
-typedef enum {
-	TX_ONLY = 0x0,
-	RX_ONLY,
-	RX_TX_MODE,
-	TX_RX_MODE
+typedef enum
+{
+	RFPHY_IDLE = 0x0,
+	RFPHY_RX_ONLY,
+	RFPHY_TX_ONLY,
+	RFPHY_TX_RXACK
 } radio_operating_mode_t;
 
-typedef struct {
+typedef struct
+{
 	uint8_t frame_control[2];
 	uint8_t seqnum;
 	uint16_t dstPAN;
@@ -77,19 +76,22 @@ typedef struct {
 	uint8_t data[MAX_PAYLOAD_SIZE];
 } __attribute__((packed)) mac_frame_t;
 
-typedef struct {
+typedef struct
+{
 	uint8_t len;
 	uint8_t fcf[2];
 	uint8_t tx_num;
 } __attribute__((packed)) ack_pack_t;
 
-typedef struct {
+typedef struct
+{
 	int16_t rssi;
 	uint8_t buffer[140];
-} __attribute__((packed)) data_rssi;
+} __attribute__((packed)) data_pckt_t;
 
 
-typedef struct {
+typedef struct
+{
 	uint16_t nodeaddr;
 	uint8_t channel;
 	uint8_t pan;
@@ -102,7 +104,8 @@ typedef struct {
 	comms_layer_t* radio;
 } __attribute__((packed)) radio_config_t;
 
-typedef struct {
+typedef struct
+{
 	uint8_t id;
 	uint8_t data[126];
 } __attribute__((packed)) packet_format_t;
