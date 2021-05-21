@@ -48,11 +48,12 @@
 #define LL_HW_MODE_RTLP            0x05
 
 // LL engine settle time
-#define LL_HW_BB_DELAY             32
-#define LL_HW_AFE_DELAY            8
-#define LL_HW_PLL_DELAY            52
-
+#define LL_HW_BB_DELAY_VAL         32
+#define LL_HW_AFE_DELAY_VAL        8
+#define LL_HW_PLL_DELAY_VAL        52
+#define SCAN_RSP_DELAY_VAL         32
 #define MAX_RX_TIMEOUT             0
+
 // queue -----------------------------------------------------------------------
 typedef struct radio_queue_element radio_queue_element_t;
 struct radio_queue_element
@@ -93,7 +94,6 @@ extern uint32_t ll_hw_get_tr_mode(void);
 static uint8_t m_rxBuf[127] = {0};
 static uint16_t volatile m_irq_flag = 0;
 static uint32_t m_foot[2] = {0};
-static uint16_t m_pktLen = 0;
 static comms_layer_am_t m_radio_iface;
 static volatile uint8_t rx_busy;
 static volatile uint8_t rx_overflow;
@@ -196,7 +196,7 @@ static void zb_hw_timing (void)
     ll_hw_set_tx_rx_release	(10, 1);
     ll_hw_set_rx_tx_interval(98);		// T_IFS = 192+2us for ZB 98
     ll_hw_set_tx_rx_interval(108);		// T_IFS = 192-6us for ZB 108
-    ll_hw_set_trx_settle(LL_HW_BB_DELAY, LL_HW_AFE_DELAY, LL_HW_PLL_DELAY);    // TxBB, RxAFE, PLL
+    ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);    // TxBB, RxAFE, PLL
 }
 
 static void zb_hw_set_srx (uint32_t rxTimeOutUs)
@@ -204,14 +204,14 @@ static void zb_hw_set_srx (uint32_t rxTimeOutUs)
     m_config.mode = RFPHY_RX_ONLY;
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_srx();
-    ll_hw_set_trx_settle(LL_HW_BB_DELAY, LL_HW_AFE_DELAY, LL_HW_PLL_DELAY);          //RxAFE,PLL
+    ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
 }
 
 static void zb_hw_set_stx (void)
 {
     m_config.mode = RFPHY_TX_ONLY;
     ll_hw_set_stx();
-    ll_hw_set_trx_settle(LL_HW_BB_DELAY, LL_HW_AFE_DELAY, LL_HW_PLL_DELAY);          //RxAFE,PLL
+    ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
 }
 
 
@@ -220,7 +220,7 @@ static void zb_hw_set_trx (uint32_t rxTimeOutUs)
     m_config.mode = RFPHY_TX_RXACK;
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_trx();
-    ll_hw_set_trx_settle(LL_HW_BB_DELAY, LL_HW_AFE_DELAY, LL_HW_PLL_DELAY);          //RxAFE,PLL
+    ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
 }
 
 static void zb_set_channel (uint8_t chn)
@@ -335,7 +335,7 @@ phy_sts_t rf_performCCA (void)
             rssiCnt++;
         }
     }
-    while (curTime < endTime0)
+    while (curTime < endTime)
     {
         rssi_cur += rf_getRssi();
         curTime = read_current_fine_time();
@@ -374,7 +374,7 @@ phy_sts_t checkEther (void)
             carr_cnt++;
         }
     }
-    while (curTime < endTime0)
+    while (curTime < endTime)
     {
         carr += rf_carriersense();
         curTime = read_current_fine_time();
@@ -395,6 +395,8 @@ phy_sts_t checkEther (void)
 void RFPHY_IRQHandler (void)
 {
     uint8_t mode;
+    uint32_t T2;
+    uint32_t delay;
     uint8_t zbRssi = 0;
     uint16_t zbFoff = 0;
     uint8_t zbCarrSens = 0;
@@ -446,22 +448,8 @@ void RFPHY_IRQHandler (void)
     else if ((mode == LL_HW_MODE_SRX || mode == LL_HW_MODE_TRX))
     {
         uint8_t  packet_len = 0;
-
         uint16_t pktLen = 0;
-        uint32_t pktFoot0, pktFoot1;    
-        int      calibra_time;                 // this parameter will be provided by global_config
-        uint8_t  fcf1, fcf2;
-        uint8_t  fNeedAck = 0;
-        uint8_t  fDrop = 0;
-        uint8_t intrapan = 0;
-        uint8_t  *p;
-        addr_t srcAddr;
-        uint8_t offset = 4;
-        uint16_t dstPanid;
-        uint16_t dstAddr;
-        uint8_t addrMode;
-        uint8_t isCoord;
-        rf_recvPkt_t *rxPkt = NULL;
+        int calibra_time;                 // this parameter will be provided by global_config
 
         rf_phy_get_pktFoot(&zbRssi, &zbFoff, &zbCarrSens);
 
@@ -535,13 +523,13 @@ void RFPHY_IRQHandler (void)
                 T2 = read_current_fine_time();
 
                 delay = (T2 > ISR_entry_time) ? (T2 - ISR_entry_time) : (BASE_TIME_UNITS - ISR_entry_time + T2);
-                // TODO: SCAN_RSP_DELAY???
-                calibra_time = pGlobal_config[SCAN_RSP_DELAY];            // consider rx_done to ISR time, SW delay after read_current_fine_time(), func read_current_fine_time() delay ...
-                delay = 118 - delay - calibra_time;                       // IFS = 150us, Tx tail -> Rx done time: about 32us
+                // TODO: SCAN_RSP_DELAY_VAL???
+                // consider rx_done to ISR time, SW delay after read_current_fine_time(), func read_current_fine_time() delay ...
+                delay = 118 - delay - SCAN_RSP_DELAY_VAL;  // IFS = 150us, Tx tail -> Rx done time: about 32us
 
                 ll_hw_set_trx_settle(delay,             // set BB delay, about 80us in 16MHz HCLK                  
-                                     LL_HW_AFE_DELAY, 
-                                     LL_HW_PLL_DELAY);  //RxAFE,PLL    
+                                     LL_HW_AFE_DELAY_VAL, 
+                                     LL_HW_PLL_DELAY_VAL);  //RxAFE,PLL    
 
                 // reset Rx/Tx FIFO
                 ll_hw_rst_rfifo();
@@ -926,13 +914,11 @@ static void start_radio_now ()
 
 void rf_tx(uint8_t* buf, uint8_t len, bool needAck)
 {
-    uint8_t txBuf[160] = {0};
     // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     // uint8_t crcCode[2]={0xff,0xff};
-    uint8_t i = 0;
 
     /* only abort the baseband when it's busy */
-    if (m_config.mode != ZB_RFPHY_IDLE )
+    if (m_config.mode != RFPHY_IDLE )
     {
         zb_hw_stop();
     }
@@ -961,23 +947,6 @@ void rf_tx(uint8_t* buf, uint8_t len, bool needAck)
     {
         osTimerStart(m_ack_timer, RADIO_WAIT_FOR_ACK_MS);
     }
-}
-
-void rf_setRxMode(uint16_t timeout)
-{
-    if (m_config.mode == ZB_RFPHY_RX_ONLY || m_config.mode == ZB_RFPHY_TX_RXACK)
-    {
-        return;
-    } 
-    else if (m_config.mode == ZB_RFPHY_TX_ONLY) {
-        // if in tx state, abort the tx first
-        zb_hw_stop();
-    }
-    zb_hw_set_srx(timeout);
-    // reset Rx/Tx FIFO
-    ll_hw_rst_rfifo();
-    ll_hw_rst_tfifo(); 
-    zb_hw_go();
 }
 
 static void radio_send_message (comms_msg_t * msg)
@@ -1319,7 +1288,6 @@ static void handle_radio_rx ()
                 debug1("rx: %02X", packet.buffer[12]);
 
                 int16_t rssi = packet.rssi; 
-                mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
             
                 _comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, rssi);
                 if (rssi < -96)
