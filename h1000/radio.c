@@ -42,10 +42,10 @@
 
 #define LL_HW_MODE_STX             0x00
 #define LL_HW_MODE_SRX             0x01
-#define LL_HW_MODE_TRX             0x02
-#define LL_HW_MODE_RTX             0x03
-#define LL_HW_MODE_TRLP            0x04
-#define LL_HW_MODE_RTLP            0x05
+#define LL_HW_MODE_TRX             0x10
+#define LL_HW_MODE_RTX             0x12
+#define LL_HW_MODE_TRLP            0x20
+#define LL_HW_MODE_RTLP            0x30
 
 // LL engine settle time
 #define LL_HW_BB_DELAY_VAL         32
@@ -173,7 +173,7 @@ static void zb_hw_stop (void)
     ll_hw_set_tx_rx_interval(108);		//T_IFS = 192-6us for ZB
 
     m_config.mode = RFPHY_IDLE;
-    osDelay(3);
+    osDelay(4);
     //delayUs(3000);
 
     // ll_hw_set_rx_timeout(33); //will trigger ll_hw_irq=RTO
@@ -408,7 +408,7 @@ void RFPHY_IRQHandler (void)
     uint32_t ISR_entry_time = read_current_fine_time();
 
     m_irq_flag = ll_hw_get_irq_status();
-    
+		
     m_config.mode = RFPHY_IDLE;
 
     if (!(m_irq_flag & LIRQ_MD))          // only process IRQ of MODE DONE
@@ -917,13 +917,11 @@ void rf_tx(uint8_t* buf, uint8_t len, bool needAck)
     // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     // uint8_t crcCode[2]={0xff,0xff};
 
-    /* only abort the baseband when it's busy */
     if (m_config.mode != RFPHY_IDLE )
     {
         zb_hw_stop();
     }
-    
-    /* Send packet through RF */
+ 
     if (needAck)
     {
         zb_hw_set_trx(MAX_RX_TIMEOUT);
@@ -936,8 +934,8 @@ void rf_tx(uint8_t* buf, uint8_t len, bool needAck)
     ll_hw_rst_rfifo();
     ll_hw_rst_tfifo(); 
 
-    ll_hw_write_tfifo(buf, len);
-    zb_hw_go();
+    ll_hw_write_tfifo(&buf[0], len);
+    ll_hw_go();
 
     m_radio_send_timestamp = radio_timestamp();
     transfer_pending = true;
@@ -1392,6 +1390,7 @@ static void radio_task (void* arg)
         // {
         //     flags = 0;
         // }
+				
         
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
