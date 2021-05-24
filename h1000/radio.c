@@ -463,21 +463,24 @@ void RFPHY_IRQHandler (void)
             //     rf_phy_get_pktFoot_fromPkt(pktFoot0,pktFoot1,
             //                                 &rxPkt->rssi,&zbFoff,&rxPkt->carrSens);
             // }
-            packet_len = zbll_hw_read_rfifo_zb(&packet.buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
+            // packet_len = zbll_hw_read_rfifo_zb(&packet.buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
+            packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
             rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
 
             // NB! OLD VERSION - why copy buffer???
             // m_packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &m_pktLen, &m_foot[0], &m_foot[1]);
             // rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
-            // if (m_packet_len>0)
+            // if (pktLen > 0)
             // {
-            //     memcpy(&packet.buffer[0], &buffer[0], 140);
+            //      memcpy(&packet.buffer[0], &buffer[0], 140);
+            // }
 
         }
 
         //check Tx option for ack tx the payload and MAC address
         if (pktLen)
         {
+            memcpy(&packet.buffer[0], &buffer[0], 140);
             // do the filtering
             mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
 
