@@ -440,7 +440,7 @@ void RFPHY_IRQHandler (void)
         }	
         else if (!radio_tx_wait_ack)
         {
-            tx_timestamps[3] = radio_timestamp();
+            tx_timestamps[4] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         }
         else if (radio_tx_wait_ack)
@@ -752,6 +752,8 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
     }
 
     osMutexRelease(m_radio_mutex);
+    
+    tx_timestamps[1] = radio_timestamp();
     //debug1("snd %p e: %d", msg, err);
     return err;
 }
@@ -965,7 +967,7 @@ static void radio_send_message (comms_msg_t * msg)
         sys_panic("snull");
     }
     
-    tx_timestamps[1] = radio_timestamp();
+    tx_timestamps[2] = radio_timestamp();
     
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
     //RAIL_Status_t rslt;
@@ -1046,7 +1048,7 @@ static void radio_send_message (comms_msg_t * msg)
 
     //ll_hw_write_tfifo(&buffer[0], total);
     
-    tx_timestamps[2] = radio_timestamp();
+    tx_timestamps[3] = radio_timestamp();
     
     if (checkEther() == PHY_CCA_IDLE)
     {
@@ -1100,7 +1102,7 @@ static void signal_send_done (comms_error_t err)
     //        m_rail_sent_timestamp - m_rail_send_timestamp);
 
     //assert(NULL != send_done);
-    debug1("snt: %p", msgp);
+    debug1("snt");
     // debug1("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
@@ -1144,7 +1146,6 @@ static void handle_radio_tx (uint32_t flags)
                 radio_tx_wait_ack = false;
                 comms_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
             }
-            tx_timestamps[4] = radio_timestamp();
             signal_send_done(COMMS_SUCCESS);
         }
         // Ack was not received ------------------------------------------------
@@ -1397,31 +1398,43 @@ static void handle_radio_events (uint32_t flags)
 
 static void radio_task (void* arg)
 {
-    while (1)
+    bool running = false;
+
+    // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
+    uint32_t state;
+    uint32_t flags = osFlagsErrorTimeout;
+
+    debug1("Thread starts");
+    flags = osThreadFlagsClear(RDFLGS_ALL);
+    debug1("ThrFlgs:0x%X", flags);
+
+    for (;;)
     {
+        flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
 
-        bool running = false;
-
-        // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
-        uint32_t state;
-        uint32_t flags = osFlagsErrorTimeout;
-        
-    	while (osFlagsErrorTimeout == flags)
+        // debug1("ThrFlgs:0x%X", flags);
+        if (flags & ~RDFLGS_ALL)
         {
-            uint32_t wait = osWaitForever;
-            if ((running) || (NULL != radio_msg_queue_head))
-            {
-                wait = 1;
-            }
-            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
+            err1("ThrdError:%X", flags);
+            continue;
         }
+    
+//    	while (osFlagsErrorTimeout == flags)
+//        {
+//            uint32_t wait = osWaitForever;
+//            if ((running) || (NULL != radio_msg_queue_head))
+//            {
+//                wait = 1;
+//            }
+//            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
+//        }
 
         // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 1);
         // if (flags == osFlagsErrorTimeout)
         // {
         //     flags = 0;
         // }
-				
+                
         
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
@@ -1509,7 +1522,7 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
         return NULL;
     }
 
-    const osThreadAttr_t main_thread_attr = {.name = "radio"};
+    const osThreadAttr_t main_thread_attr = {.name = "radio", .priority = osPriorityRealtime};
     m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
 
     if(NULL == m_config.threadid)
