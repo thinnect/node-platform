@@ -440,7 +440,7 @@ void RFPHY_IRQHandler (void)
         }	
         else if (!radio_tx_wait_ack)
         {
-            tx_timestamps[4] = radio_timestamp();
+            tx_timestamps[5] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         }
         else if (radio_tx_wait_ack)
@@ -947,7 +947,9 @@ void rf_tx(uint8_t* buf, uint8_t len, bool needAck)
 
     ll_hw_write_tfifo(&buf[0], len);
     ll_hw_go();
-
+    
+    tx_timestamps[4] = radio_timestamp();
+    
     m_radio_send_timestamp = radio_timestamp();
     transfer_pending = true;
     osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
@@ -1068,7 +1070,7 @@ static void signal_send_done (comms_error_t err)
     void * user;
     uint32_t qtime;
 
-    tx_timestamps[5] = radio_timestamp();
+    tx_timestamps[6] = radio_timestamp();
 
     osTimerStop(m_send_timeout_timer);
 
@@ -1107,9 +1109,9 @@ static void signal_send_done (comms_error_t err)
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
     
-    for (uint8_t idx = 0; idx < 6; ++idx)
+    for (uint8_t idx = 0; idx < 7; ++idx)
     {
-        debug1("ts[%d]:%u", idx, tx_timestamps[idx]);
+        debug1("ts[%d]=%u", idx, tx_timestamps[idx]);
     }
 }
 
@@ -1522,7 +1524,12 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
         return NULL;
     }
 
-    const osThreadAttr_t main_thread_attr = {.name = "radio", .priority = osPriorityRealtime};
+    const osThreadAttr_t main_thread_attr = 
+    {
+        .name = "radio",
+        .priority = osPriorityHigh // osPriorityNormal 
+    };
+    
     m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
 
     if(NULL == m_config.threadid)
