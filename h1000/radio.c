@@ -102,6 +102,8 @@ static volatile uint8_t rx_abort;
 static volatile uint8_t rx_fail;
 static volatile uint8_t tx_ack_sent;
 
+static volatile uint32_t tx_timestamps[10] = {0};
+
 static osMutexId_t m_radio_mutex;
 
 static radio_config_t m_config = {0};
@@ -438,6 +440,7 @@ void RFPHY_IRQHandler (void)
         }	
         else if (!radio_tx_wait_ack)
         {
+            tx_timestamps[3] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
         }
         else if (radio_tx_wait_ack)
@@ -545,7 +548,8 @@ void RFPHY_IRQHandler (void)
             
                 // ll_hw_write_tfifo(ackTxBuf, 6);//include the crc16
                 ll_hw_write_tfifo(ackTxBuf, 4); //no crc16
-                zb_hw_go();
+                ll_hw_go();
+                //zb_hw_go();
             }
         
             // Set timestamp
@@ -702,7 +706,9 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
     {
         return (COMMS_EINVAL);
     }
-
+    
+    tx_timestamps[0] = radio_timestamp();
+    
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
     if (ST_RUNNING != m_state)
@@ -958,7 +964,9 @@ static void radio_send_message (comms_msg_t * msg)
     {
         sys_panic("snull");
     }
-
+    
+    tx_timestamps[1] = radio_timestamp();
+    
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
     //RAIL_Status_t rslt;
     uint16_t count, total;
@@ -1038,6 +1046,8 @@ static void radio_send_message (comms_msg_t * msg)
 
     //ll_hw_write_tfifo(&buffer[0], total);
     
+    tx_timestamps[2] = radio_timestamp();
+    
     if (checkEther() == PHY_CCA_IDLE)
     {
         rf_tx(buffer, total, radio_tx_wait_ack);
@@ -1055,6 +1065,8 @@ static void signal_send_done (comms_error_t err)
     comms_msg_t * msgp;
     void * user;
     uint32_t qtime;
+
+    tx_timestamps[5] = radio_timestamp();
 
     osTimerStop(m_send_timeout_timer);
 
@@ -1092,6 +1104,11 @@ static void signal_send_done (comms_error_t err)
     // debug1("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
+    
+    for (uint8_t idx = 0; idx < 6; ++idx)
+    {
+        debug1("ts[%d]:%u", idx, tx_timestamps[idx]);
+    }
 }
 
 static void radio_resend ()
@@ -1127,6 +1144,7 @@ static void handle_radio_tx (uint32_t flags)
                 radio_tx_wait_ack = false;
                 comms_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
             }
+            tx_timestamps[4] = radio_timestamp();
             signal_send_done(COMMS_SUCCESS);
         }
         // Ack was not received ------------------------------------------------
@@ -1347,6 +1365,16 @@ static void handle_radio_events (uint32_t flags)
     if (flags & RDFLG_RAIL_RXACK_TIMEOUT)
     {
 
+    }
+
+    if (flags & RDFLG_RAIL_RX_SUCCESS)
+    {
+         //debug1("Rx");
+    }
+
+    if (flags & RDFLG_RAIL_TXACK_SENT)
+    {
+         debug1("ACK snt");
     }
 
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
