@@ -9,7 +9,8 @@
 #define __LOG_LEVEL__ ( LOG_LEVEL_radio & 0xFFFF )
 #include "log.h"
 
-// #define LOG_TIMESTAMPS 1
+// #define LOG_TX_TIMESTAMPS 1
+// #define LOG_RX_TIMESTAMPS 1
 
 #define RADIO_MAX_SEND_TIME_MS 500UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
@@ -114,9 +115,19 @@ enum
     RF_TX_DONE,
     IRQ_SEND_DONE,
     SIGNAL_SEND_DONE,
-    LAST_TIMESTAMP
+    TX_LAST_TIMESTAMP
 };
-static volatile uint32_t tx_timestamps[LAST_TIMESTAMP] = {0};
+static volatile uint32_t tx_timestamps[TX_LAST_TIMESTAMP] = {0};
+
+enum
+{
+    RX_IRQ_START,
+    RX_IRQ_FINISH,
+    RX_PRC_START,
+    RX_PRC_END,
+    RX_LAST_TIMESTAMP
+};
+static volatile uint32_t rx_timestamps[RX_LAST_TIMESTAMP] = {0};
 
 static osMutexId_t m_radio_mutex;
 
@@ -492,6 +503,7 @@ void RFPHY_IRQHandler (void)
         // read packet
         if (m_irq_flag & LIRQ_COK)
         {
+            rx_timestamps[RX_IRQ_START] = radio_timestamp();
             // TODO: check packet_len value!
             packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
             rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
@@ -609,6 +621,7 @@ void RFPHY_IRQHandler (void)
             else
             {
                 osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+                rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
             }
 
         }
@@ -1088,7 +1101,7 @@ static void radio_send_message (comms_msg_t * msg)
     //ll_hw_write_tfifo(&buffer[0], total);
     
     tx_timestamps[RADIO_SEND_MSG_PCKT_DONE] = radio_timestamp();
-    
+		
     if (checkEther() == PHY_CCA_IDLE)
     {
         rf_tx(buffer, total, radio_tx_wait_ack);
@@ -1098,6 +1111,7 @@ static void radio_send_message (comms_msg_t * msg)
         // ll_hw_go();
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
     }
+		
 }
 
 static void signal_send_done (comms_error_t err)
@@ -1146,8 +1160,8 @@ static void signal_send_done (comms_error_t err)
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
-#ifdef  LOG_TIMESTAMPS    
-    for (uint8_t idx = 0; idx < LAST_TIMESTAMP; ++idx)
+#ifdef  LOG_TX_TIMESTAMPS    
+    for (uint8_t idx = 0; idx < TX_LAST_TIMESTAMP; ++idx)
     {
         debug1("ts[%d]=%u", idx, tx_timestamps[idx]);
     }
@@ -1290,6 +1304,7 @@ static void handle_radio_rx ()
 {
     //uint8_t buffer[140];
     data_pckt_t packet = {0};
+    rx_timestamps[RX_PRC_START] = radio_timestamp();
     // RX processing -----------------------------------------------------------
     if (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0))
     {
@@ -1365,6 +1380,14 @@ static void handle_radio_rx ()
                 comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 
                 comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
+                rx_timestamps[RX_PRC_END] = radio_timestamp();
+								
+                #ifdef  LOG_RX_TIMESTAMPS    
+                  for (uint8_t idx = 0; idx < RX_LAST_TIMESTAMP; ++idx)
+                  {
+                    debug1("ts[%d]=%u", idx, rx_timestamps[idx]);
+                  }
+                #endif
             }
         }
     }
