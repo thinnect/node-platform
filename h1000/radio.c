@@ -9,8 +9,9 @@
 #define __LOG_LEVEL__ ( LOG_LEVEL_radio & 0xFFFF )
 #include "log.h"
 
-#define LOG_TX_TIMESTAMPS 1
-#define LOG_RX_TIMESTAMPS 1
+//#define LOG_TX_TIMESTAMPS 1
+//#define LOG_RX_TIMESTAMPS 1
+// #define USE_ACK 1
 
 #define RADIO_MAX_SEND_TIME_MS 500UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
@@ -481,6 +482,7 @@ void RFPHY_IRQHandler (void)
     //if ((mode == LL_HW_MODE_STX) && (m_irq_flag & LIRQ_TD))
     if (m_irq_flag & LIRQ_TD)
     {
+#ifdef USE_ACK
         if (sending_ack)
         {
             sending_ack = false;
@@ -496,6 +498,11 @@ void RFPHY_IRQHandler (void)
         {
             osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
         }
+#else
+        // do not use ACK!
+        tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
+        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+#endif
         // enable Rx again if Tx mode is not activated
         rf_setRxMode(MAX_RX_TIMEOUT);
     }   // Rx mode
@@ -538,7 +545,9 @@ void RFPHY_IRQHandler (void)
             //     break;
             // }
             
-            // ACK packet received, set send done flag 
+            // do not use ACK!
+#ifdef USE_ACK
+            // ACK packet received, set send done flag
             if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
             {
                 if (radio_tx_wait_ack)
@@ -598,7 +607,7 @@ void RFPHY_IRQHandler (void)
                 ll_hw_go();
                 //zb_hw_go();
             }
-        
+#endif       
             // Set timestamp
             // rxPkt->timestamp = ISR_entry_time;
             // rf_rxBuf = rf_rxBackupBuf;
@@ -1059,6 +1068,7 @@ static void radio_send_message (comms_msg_t * msg)
         warn1("dest not set");
     }
     amid = comms_get_packet_type(iface, msg);
+#ifdef USE_ACK
     // is ack and not broadcast
     if (comms_is_ack_required(iface, msg) && (dst != 0xFFFF))
     {
@@ -1070,7 +1080,11 @@ static void radio_send_message (comms_msg_t * msg)
         radio_tx_wait_ack = false;
         buffer[1] = 0x41;
     }
-
+#else
+    radio_tx_wait_ack = false;
+    buffer[1] = 0x41;
+#endif
+    
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
