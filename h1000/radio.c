@@ -13,7 +13,7 @@
 #define LOG_RX_TIMESTAMPS 1
 
 #define RADIO_MAX_SEND_TIME_MS 500UL
-#define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
+#define RADIO_WAIT_FOR_ACK_MS 10UL // SHOULD BE 1MS, SET TO 10MS FOR TESTING
 #define RADIO_WAIT_FOR_ACK_SENT_MS 5
 
 // Thread flag definitions
@@ -191,9 +191,7 @@ static void zb_hw_go (void)
 }
 
 static void zb_hw_stop (void)
-{
-//    uint8_t cnt;
-    
+{    uint8_t cnt=0;
     subWriteReg(AP_PCR_BASE + 0x0C, 10, 10, 0); //reset bbll
 
     PHY_REG_WT( 0x400300A4, 0x00000140);     // clr tx_auto
@@ -208,22 +206,8 @@ static void zb_hw_stop (void)
     ll_hw_set_tx_rx_interval(108);		//T_IFS = 192-6us for ZB
 
     m_config.mode = RFPHY_IDLE;
-    osDelay(4);
-    //delayUs(3000);
-
-//    llWaitingIrq = true;
-//    ll_hw_set_rx_timeout(33); //will trigger ll_hw_irq=RTO
-//    while (llWaitingIrq)
-//    {
-//        WaitRTCCount(3);
-//        cnt++;
-//        if (cnt > 10)
-//        {
-//            err1("PHY STOP ERR");
-//            break;
-//        }
-//    }
-    // debug1("cnt: %d", cnt);
+    osDelay(4); // We need to eliminate this delay. However when just removing delay packets are not sent to radio, but
+		// successful interrupt is triggered. There is a need to switch between modes very quickly and 4ms in between is very long.
 }
 
 static void zb_hw_timing (void)
@@ -329,7 +313,6 @@ uint8_t rf_carriersense (void)
     uint16_t foff = 0;
     uint8_t carrSens = 0;
     rf_phy_get_pktFoot(&rssi_cur, &foff, &carrSens);
-    //debug1("Carrier sense : %d \r\n", carrSens);
     return carrSens;
 }
 
@@ -463,22 +446,13 @@ void RFPHY_IRQHandler (void)
         ll_hw_clr_irq();
         return;
     }
-    // TODO: should we use it instead of osDelay???
-//    if (0 == (m_irq_flag & LIRQ_RTO))
-//    {
-//        //debug1("RXTO");
-//        ll_hw_clr_irq();
-//        llWaitingIrq = false;
-//        return;
-//    }
-    
+
     HAL_ENTER_CRITICAL_SECTION();
 
     mode = ll_hw_get_tr_mode();
 
     // ===================   mode TRX process 1
     // Tx, option: No Ack Need
-    //if ((mode == LL_HW_MODE_STX) && (m_irq_flag & LIRQ_TD))
     if (m_irq_flag & LIRQ_TD)
     {
         if (sending_ack)
@@ -531,12 +505,6 @@ void RFPHY_IRQHandler (void)
             memcpy(&packet.buffer[0], &buffer[0], 140);
             // do the filtering
             mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-
-            // if ( ((fcf1 & MAC_FCF_FRAME_TYPE) == 0x02) && (pktLen == 6)) {
-            //     lmac_ackCb(MAC_FCF_FRAME_PENDING_BIT & fcf1, *(rxPkt->psdu+3), ISR_entry_time, zbRssi, zbCarrSens);
-            //     fDrop = 1; // ACK packet
-            //     break;
-            // }
             
             // ACK packet received, set send done flag 
             if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
@@ -561,11 +529,6 @@ void RFPHY_IRQHandler (void)
                 ackTxBuf[1] = 0x02;
                 ackTxBuf[2] = 0x00;
                 ackTxBuf[3] = ack_seq; // SN number
-                // TODO: Do we need this???
-                // if (isDataPending(&srcAddr))
-                // {
-                //     ackTxBuf[1] |= 0x10;
-                // }
                 
                 // send ack response
                 zb_hw_set_stx();             // set LL HW as single Tx mode  
@@ -598,14 +561,6 @@ void RFPHY_IRQHandler (void)
                 ll_hw_go();
                 //zb_hw_go();
             }
-        
-            // Set timestamp
-            // rxPkt->timestamp = ISR_entry_time;
-            // rf_rxBuf = rf_rxBackupBuf;
-            // if (rf_rxCbFunc)
-            // {
-            //     rf_rxCbFunc(rxPkt);
-            // }
 
             // Set timestamp
             uint8_t len = packet.buffer[0];
@@ -644,105 +599,6 @@ void RFPHY_IRQHandler (void)
     ll_hw_clr_irq();
     
     HAL_EXIT_CRITICAL_SECTION();
-/*    if (m_irq_flag & LIRQ_COK)
-    {
-        if (m_config.mode == RX_ONLY || m_config.mode == TX_RX_MODE)
-        {
-            m_packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &m_pktLen, &m_foot[0], &m_foot[1]);
-            rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
-            if (m_packet_len>0)
-            {
-                memcpy(&packet.buffer[0], &buffer[0], 140);
-                mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-                if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
-                {
-                    if (radio_tx_wait_ack)
-                    {
-                        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-                    }
-                }
-                else if ((frame->frame_control[1] & MAC_FCF_DST_ADDR_BIT) == 0x08)
-                {
-                    if (frame->dst == m_config.nodeaddr || frame->dst == BROADCAST_ADDR)
-                    {
-                        //is ackknowledge packet
-                        if(frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT)
-                        {
-                            ack_seq = packet.buffer[3]; // ??? FOR SURE THIS GONNA BRING PROBLEMS LATER ON
-                            osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_ACK);
-                        }
-                        // Receive timestamp, added to message buffer
-                        uint8_t len = packet.buffer[0];
-
-                        uint32_t airTimeUs = ((len+1)*8) * 4; // packet length / transmission speed
-                        rts = rts - 3;//airTimeUs;
-                        // Replace used CRC with timestamp
-                        packet.buffer[len-1] = rts >> 24;
-                        packet.buffer[len] = rts >> 16;
-                        packet.buffer[len + 1] = rts >> 8;
-                        packet.buffer[len + 2] = rts;
-
-                        packet.rssi = -1 * zbRssi;
-                        int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
-                        if(osOK != res)
-                        {
-                            debug1("Failed to put message in queue %i\r\n", res);
-                        }
-                        else
-                        {
-                            osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-                            // phy_rf_rx();
-                        }
-                    }
-                    else
-                    {
-                        // phy_rf_rx();
-                    }
-                }
-            }
-        }
-    }
-    
-    if (m_irq_flag & LIRQ_RFULL)
-    {
-        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_OVERFLOW);
-    }
-        
-    if (m_irq_flag & LIRQ_TD)
-    {
-        //debug1("txd");
-        transfer_pending = false;
-        if (sending_ack)
-        {
-            sending_ack = false;
-            osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
-        }	
-        else if (!radio_tx_wait_ack)
-        {
-            osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-        }
-        else if (radio_tx_wait_ack)
-        {
-            osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
-        }
-    }
-
-    if (m_irq_flag & LIRQ_CERR)
-    {
-        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_FRAME_ERROR);
-    }
-
-    if (0 == (m_irq_flag & LIRQ_RTO))
-    {
-        // debug1("RX Timed out");
-    }
-
-    ll_hw_clr_irq();
-    
-    HAL_EXIT_CRITICAL_SECTION();
-    
-    // phy_rf_rx();
-*/
 }
 
 static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* msg, comms_send_done_f* cb, void* user)
@@ -1002,6 +858,8 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
  
     if (needAck)
     {
+			// When there is a need of ack, we use TRX mode, which should switch to rx immediately after 
+			// trensmitting a packet, however this is not happening and ack is not received.
         zb_hw_set_trx(MAX_RX_TIMEOUT);
     }
     else
@@ -1471,21 +1329,6 @@ static void handle_radio_events (uint32_t flags)
             osTimerStart(m_ack_timeout_timer, RADIO_WAIT_FOR_ACK_SENT_MS);
         }
     }
-    // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
-    // {
-    //     phy_rf_rx();
-    // }
-        
-//    if (flags & RDFLG_RADIO_STRT_ACK_TIM)
-//    {
-//        osTimerStart(m_ack_timer, RADIO_WAIT_FOR_ACK_MS);
-//    }
-    
-    // if (flags & RDFLG_RADIO_ACK)
-    // {
-    //     debug1("Sending ack");
-    //     send_ack_packet();
-    // }
 }
 
 
@@ -1511,23 +1354,6 @@ static void radio_task (void* arg)
             err1("ThrdError:%X", flags);
             continue;
         }
-    
-//    	while (osFlagsErrorTimeout == flags)
-//        {
-//            uint32_t wait = osWaitForever;
-//            if ((running) || (NULL != radio_msg_queue_head))
-//            {
-//                wait = 1;
-//            }
-//            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
-//        }
-
-        // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 1);
-        // if (flags == osFlagsErrorTimeout)
-        // {
-        //     flags = 0;
-        // }
-                
         
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
