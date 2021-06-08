@@ -191,40 +191,23 @@ static void zb_hw_go (void)
 #endif
 }
 
-static void zb_hw_stop (void)
+
+void zb_hw_stop(void)
 {
-//    uint8_t cnt;
-    
-    subWriteReg(AP_PCR_BASE + 0x0C, 10, 10, 0); //reset bbll
+    uint8_t cnt=0;
+    ll_hw_set_rx_timeout(33);  //will trigger ll_hw_irq=RTO
 
-    PHY_REG_WT( 0x400300A4, 0x00000140);     // clr tx_auto
-    PHY_REG_WT( 0x400300A0, 0x0000000E);     // clr pll_auto override
-    PHY_REG_WT( 0x400300A0, 0x00000000);     // clr pll_auto override
-
-    subWriteReg(AP_PCR_BASE + 0x0C, 10, 10, 1); //release bbll reset
-
-    //restore the ll register
-    ll_hw_set_tx_rx_release	(10, 1);
-    ll_hw_set_rx_tx_interval(98);		//T_IFS = 192+2us for ZB
-    ll_hw_set_tx_rx_interval(108);		//T_IFS = 192-6us for ZB
-
-    m_config.mode = RFPHY_IDLE;
-    osDelay(4);
-    //delayUs(3000);
-
-//    llWaitingIrq = true;
-//    ll_hw_set_rx_timeout(33); //will trigger ll_hw_irq=RTO
-//    while (llWaitingIrq)
-//    {
-//        WaitRTCCount(3);
-//        cnt++;
-//        if (cnt > 10)
-//        {
-//            err1("PHY STOP ERR");
-//            break;
-//        }
-//    }
-    // debug1("cnt: %d", cnt);
+    while (RFPHY_IDLE != m_config.mode)
+    {
+        WaitRTCCount(3);
+        cnt++;
+ 
+        if(cnt>10)
+        {
+            err1("!hwstop");
+            break;
+        }
+    };
 }
 
 static void zb_hw_timing (void)
