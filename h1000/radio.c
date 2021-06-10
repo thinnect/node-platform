@@ -195,11 +195,13 @@ static void zb_hw_go (void)
 void zb_hw_stop(void)
 {
     uint8_t cnt=0;
-    ll_hw_set_rx_timeout(33);  //will trigger ll_hw_irq=RTO
+    ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
 
     while (RFPHY_IDLE != m_config.mode)
     {
-        WaitRTCCount(3);
+			
+        WaitRTCCount(1);
+			
         cnt++;
  
         if(cnt>10)
