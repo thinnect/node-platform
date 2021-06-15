@@ -11,7 +11,7 @@
 
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
-// #define USE_ACK 1
+#define USE_ACK 1
 
 #define RADIO_MAX_SEND_TIME_MS 500UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
@@ -43,6 +43,7 @@
 #define RDFLG_RADIO_STRT_ACK_TIM  (1 << 22)
 #define RDFLG_ACK_START           (1 << 23)
 #define RDFLG_ACK_SENT_TIMEOUT    (1 << 24)
+#define RDFLG_CRC_ERROR           (1 << 26)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -321,6 +322,7 @@ uint8_t rf_carriersense (void)
 
 void rf_setRxMode (uint16_t timeout)
 {
+	
     if (m_config.mode == RFPHY_RX_ONLY || m_config.mode == RFPHY_TX_RXACK)
     {
         return;
@@ -330,11 +332,13 @@ void rf_setRxMode (uint16_t timeout)
         // if in tx state, abort the tx first
         zb_hw_stop();
     }
+		
     zb_hw_set_srx(timeout);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
-    ll_hw_rst_tfifo(); 
-    zb_hw_go();
+    ll_hw_rst_tfifo();
+		
+    ll_hw_go();
 }
 
 phy_sts_t rf_performCCA (void)
@@ -473,11 +477,13 @@ void RFPHY_IRQHandler (void)
             sending_ack = false;
             rx_timestamps[SEND_DONE_ACK] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
+					
         }        
         else if (!radio_tx_wait_ack)
         {
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+					
         }
         else if (radio_tx_wait_ack)
         {
@@ -489,8 +495,12 @@ void RFPHY_IRQHandler (void)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 #endif
         // enable Rx again if Tx mode is not activated
-        rf_setRxMode(MAX_RX_TIMEOUT);
-    }   // Rx mode
+		    if (m_config.mode == RFPHY_IDLE)
+		    {
+			    rf_setRxMode(MAX_RX_TIMEOUT);
+		    }
+    }
+		// Rx mode
     else if ((mode == LL_HW_MODE_SRX || mode == LL_HW_MODE_TRX))
     {
         uint8_t  packet_len = 0;
@@ -515,6 +525,12 @@ void RFPHY_IRQHandler (void)
             // }
 
         }
+				else if (m_irq_flag & LIRQ_CERR)
+				{
+					pktLen = 0;
+					rf_setRxMode(MAX_RX_TIMEOUT);
+					osThreadFlagsSet(m_config.threadid, RDFLG_CRC_ERROR);
+				}
 
         //check Tx option for ack tx the payload and MAC address
         if (pktLen)
@@ -540,9 +556,10 @@ void RFPHY_IRQHandler (void)
                     osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
                 }
             }
-
+					
+						uint16_t dest1 = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
             // Handle ACK request with highest priority
-            if (frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT)
+            if ((frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT) && (dest1 == m_config.nodeaddr))
             {
                 // uint8_t seed[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
                 //uint8_t crcCode[2] = {0xff, 0xff};
@@ -604,35 +621,40 @@ void RFPHY_IRQHandler (void)
             // Set timestamp
             uint8_t len = packet.buffer[0];
             
-            // TODO; use microseconds in the future
-            // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
-            
-            rts = rts - 3; //airTimeUs;
-            // Replace used CRC with timestamp
-            packet.buffer[len - 1] = rts >> 24;
-            packet.buffer[len] = rts >> 16;
-            packet.buffer[len + 1] = rts >> 8;
-            packet.buffer[len + 2] = rts;
-
-            packet.rssi = -1 * zbRssi;
-            // TODO: use linked list instead?
-            int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
-            if(osOK != res)
-            {
-                err1("Failed to put message in queue %i", res);
-            }
-            else
-            {
-                osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-                rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
-            }
-            // enable Rx again if Tx mode is not activated
-            if (m_config.mode == RFPHY_IDLE)
+						if (m_config.mode == RFPHY_IDLE)
             {
                 rf_setRxMode(MAX_RX_TIMEOUT);
             }
+						
+						// if not ack
+						if (len > 5)
+						{
+							// TODO; use microseconds in the future
+							// uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
+							
+							rts = rts - 3; //airTimeUs;
+							// Replace used CRC with timestamp
+							packet.buffer[len - 1] = rts >> 24;
+							packet.buffer[len] = rts >> 16;
+							packet.buffer[len + 1] = rts >> 8;
+							packet.buffer[len + 2] = rts;
+
+							packet.rssi = -1 * zbRssi;
+							
+							// TODO: use linked list instead? it takes approx 300-400us to put msg in queue
+							int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
+							if(osOK != res)
+							{
+									err1("Failed to put message in queue %i", res);
+							}
+							else
+							{
+									osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+									rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
+							}
+						}
         }
-    }
+			}
    
     // post ISR process   
     ll_hw_clr_irq();
@@ -994,16 +1016,8 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
         zb_hw_stop();
     }
  
-    if (needAck)
-    {
-        zb_hw_set_trx(MAX_RX_TIMEOUT);
-    }
-    else
-    {
-        zb_hw_set_stx();
-    }
+    zb_hw_set_stx();
     
-    // zb_hw_set_trx(MAX_RX_TIMEOUT);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
     ll_hw_rst_tfifo(); 
@@ -1454,6 +1468,11 @@ static void handle_radio_events (uint32_t flags)
     if (flags & RDFLG_RAIL_RX_SUCCESS)
     {
          //debug1("Rx");
+    }
+		
+    if (flags & RDFLG_CRC_ERROR)
+    {
+        warn1("CRC error");
     }
 
     if (flags & RDFLG_RAIL_TXACK_SENT)
