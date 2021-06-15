@@ -1232,7 +1232,7 @@ static void handle_radio_tx (uint32_t flags)
                 debug1("ackd");
                 osTimerStop(m_ack_timer);
                 radio_tx_wait_ack = false;
-                comms_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
+                _comms_set_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
             }
             signal_send_done(COMMS_SUCCESS);
         }
