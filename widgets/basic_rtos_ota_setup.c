@@ -5,7 +5,7 @@
  *     understanding of basic setup. !!!
  *
  * Copyright Thinnect Inc. 2020
- * @license <PROPRIETARY>
+ * @license MIT
  */
 #include "basic_rtos_ota_setup.h"
 
@@ -135,9 +135,9 @@ static void ota_updater_active (bool on)
 
 void basic_rtos_ota_setup (comms_layer_t * p_beat_comm, comms_layer_t * p_direct_comm, bool sleep_control, bool * p_feed_watchdog)
 {
-	mp_beat_comm = p_beat_comm;
-	mp_direct_comm = p_direct_comm;
-	m_use_sleep_control = sleep_control;
+    mp_beat_comm = p_beat_comm;
+    mp_direct_comm = p_direct_comm;
+    m_use_sleep_control = sleep_control;
     mp_feed_watchdog = p_feed_watchdog;
 
     m_bstk_stopped = false;
