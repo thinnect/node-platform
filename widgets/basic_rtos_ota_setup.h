@@ -5,7 +5,7 @@
  *     understanding of basic setup. !!!
  *
  * Copyright Thinnect Inc. 2020
- * @license <PROPRIETARY>
+ * @license MIT
  */
 #ifndef BASIC_RTOS_OTA_SETUP_H_
 #define BASIC_RTOS_OTA_SETUP_H_
