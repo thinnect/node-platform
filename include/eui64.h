@@ -15,7 +15,7 @@
 
 typedef struct ieee_eui64 {
 	uint8_t data[IEEE_EUI64_LENGTH];
-} ieee_eui64_t;
+} __attribute__((packed))ieee_eui64_t;
 
 /**
  * Check if EUI64 has a value of all-zeros.

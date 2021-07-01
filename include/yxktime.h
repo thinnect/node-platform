@@ -9,6 +9,8 @@
 #define YXKTIME_H_
 
 #include <time.h>
+#include <stdint.h>
+
 
 /**
  * Convert the Unix time to century time.

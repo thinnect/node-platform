@@ -14,11 +14,11 @@ uint32_t time_yxk (const time_t * t)
 	if((time_t)(-1) != *t)
 	{
 		struct tm yxk;
-		if (NULL != gmtime_r(t, &yxk))
+	/*	if (NULL != gmtime_r(t, &yxk))
 		{
 			yxk_zero(&yxk);
 			return (uint32_t)(*t - mktime(&yxk));
-		}
+		}*/
 	}
 	return UINT32_MAX;
 }
@@ -28,11 +28,11 @@ time_t yxk_time (uint32_t yxks, const time_t * now)
 	if (*now != (time_t)(-1))
 	{
 		struct tm epoch;
-		if (NULL != gmtime_r(now, &epoch))
+	/*	if (NULL != gmtime_r(now, &epoch))
 		{
 			yxk_zero(&epoch);
 			return (time_t)mktime(&epoch) + yxks;
-		}
+		}*/
 	}
 	return (time_t)(-1);
 }
