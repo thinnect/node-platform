@@ -940,13 +940,13 @@ static void radio_ack_send_timeout_cb (void*arg)
 {
     sending_ack = false;
     rf_setRxMode(MAX_RX_TIMEOUT);
-    debug1("ACK send timeout");
+    //debug1("ACK send timeout");
     //osThreadFlagsSet(m_config.threadid, RDFLG_ACK_SENT_TIMEOUT);
 }
     
 static void stop_radio_now ()
 {
-    debug1("stop");
+    //debug1("stop");
 
     // Return any pending TX messages with COMMS_EOFF
     // No mutex, queue cannot change - send not accepting msgs in stop state
@@ -1096,7 +1096,7 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
-    debug1("tx: %02X", buffer[12]);
+    //info1("tx: %02X", buffer[12]);
 
     //	zb_hw_set_trx(0);
 
@@ -1187,7 +1187,7 @@ static void signal_send_done (comms_error_t err)
     //        m_rail_sent_timestamp - m_rail_send_timestamp);
 
     //assert(NULL != send_done);
-    debug1("snt");
+    //info1("snt");
     // debug1("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
@@ -1229,7 +1229,7 @@ static void handle_radio_tx (uint32_t flags)
 
             if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
             {
-                debug1("ackd");
+               // debug1("ackd");
                 osTimerStop(m_ack_timer);
                 radio_tx_wait_ack = false;
                 _comms_set_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
@@ -1394,7 +1394,7 @@ static void handle_radio_rx ()
                 comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
                 //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-                debug1("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
+                //debug1("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
 
                 int16_t rssi = packet.rssi; 
             
@@ -1477,7 +1477,7 @@ static void handle_radio_events (uint32_t flags)
 
     if (flags & RDFLG_RAIL_TXACK_SENT)
     {
-        debug1("ACK snt");
+       // debug1("ACK snt");
         osTimerStop(m_ack_timeout_timer);
     }
     
@@ -1485,7 +1485,7 @@ static void handle_radio_events (uint32_t flags)
     {
         if (sending_ack)
         {
-            debug1("Ack tmr strt");
+           // debug1("Ack tmr strt");
             osTimerStart(m_ack_timeout_timer, RADIO_WAIT_FOR_ACK_SENT_MS);
         }
     }
@@ -1515,9 +1515,9 @@ static void radio_task (void* arg)
     uint32_t state;
     uint32_t flags = osFlagsErrorTimeout;
 
-    debug1("Thread starts");
+    //debug1("Thread starts");
     flags = osThreadFlagsClear(RDFLGS_ALL);
-    debug1("ThrFlgs:0x%X", flags);
+   // debug1("ThrFlgs:0x%X", flags);
 
     for (;;)
     {
@@ -1561,7 +1561,7 @@ static void radio_task (void* arg)
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
-            debug1("restart");
+           // debug1("restart");
             zb_hw_stop();
 
             // If sending, cancel and notify user
@@ -1636,7 +1636,7 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     const osThreadAttr_t main_thread_attr = 
     {
         .name = "radio",
-        .priority = osPriorityAboveNormal  // osPriorityNormal osPriorityHigh
+        .priority =  osPriorityNormal // osPriorityNormal osPriorityHigh osPriorityAboveNormal
     };
     
     m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
