@@ -29,11 +29,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * \file
- *
- * This module provides functionality that is common to all Sensirion drivers
- */
+/*
+  * This module is a mix-and-match of Sensirion SCD30 and SCD4x code to allow both drivers to be compiled into the same application.
+  * Modifications copyright Thinnect Inc. 2021, may be redistributed under the terms of the original license above.
+  * Neither the name of Thinnect Inc. nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+*/
 
 #include "sensirion_common.h"
 #include "sensirion_i2c.h"
