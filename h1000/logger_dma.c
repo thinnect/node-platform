@@ -88,7 +88,7 @@ static bool try_dma_start()
 			{
 				hal_dma_wait_channel_complete(DMA_CH_0);
 			}
-				return true;				
+			return true;				
 		}               
 	}
 	
