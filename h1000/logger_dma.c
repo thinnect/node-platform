@@ -81,15 +81,15 @@ static bool try_dma_start()
 			
 		m_cfg.enable_int = true;
 		int retval = hal_dma_config_channel(DMA_CH_0,&m_cfg);
-    if(retval == PPlus_SUCCESS)
-    {
-        hal_dma_start_channel(DMA_CH_0);
-        if(m_cfg.enable_int == false)
-        {
-            hal_dma_wait_channel_complete(DMA_CH_0);
-        }
+		if(retval == PPlus_SUCCESS)
+		{
+			hal_dma_start_channel(DMA_CH_0);
+			if(m_cfg.enable_int == false)
+			{
+				hal_dma_wait_channel_complete(DMA_CH_0);
+			}
 				return true;				
-    }               
+		}               
 	}
 	
 	return false;
@@ -98,9 +98,9 @@ static bool try_dma_start()
 static void ldma_thread (void* argument)
 {
 	bool busy = false;
-    for(;;)
-    {
-    	uint32_t flags = osThreadFlagsWait(LOGGER_THREAD_FLAGS, osFlagsWaitAny, osWaitForever);
+	for(;;)
+	{
+		uint32_t flags = osThreadFlagsWait(LOGGER_THREAD_FLAGS, osFlagsWaitAny, osWaitForever);
 
 		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
@@ -186,10 +186,10 @@ bool logger_dma_init()
 		const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 1024};
 		m_log_mutex = osMutexNew(NULL);
 
-	  HAL_DMA_t ch_cfg;
+		HAL_DMA_t ch_cfg;
 		ch_cfg.dma_channel = DMA_CH_0;
 		ch_cfg.evt_handler = &dma_callback;
-    ret &= hal_dma_init_channel(ch_cfg);
+		ret &= hal_dma_init_channel(ch_cfg);
 	
 		ret &= hal_dma_stop_channel(DMA_CH_0);
 		
