@@ -67,7 +67,7 @@ static bool try_dma_start()
 	if(length > 0)
 	{
 		
-	  m_cfg.transf_size = length;
+		m_cfg.transf_size = length;
 				
 		m_cfg.sinc = DMA_INC_INC;
 		m_cfg.src_tr_width = DMA_WIDTH_BYTE;
