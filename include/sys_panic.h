@@ -56,7 +56,7 @@ extern const char * g_panic_str;
 
 #ifndef __ARMCC_VERSION
 #define sys_panic(str)                                      \
-		({                                                          \
+({                                                          \
     STATIC_CONST char moduulROM[] PROGMEM = __MODUUL__;     \
     STATIC_CONST char strROM[] PROGMEM = str;               \
         g_panic_file = moduulROM;                           \
