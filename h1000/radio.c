@@ -48,6 +48,7 @@
 #define RDFLG_ACK_START           (1 << 23)
 #define RDFLG_ACK_SENT_TIMEOUT    (1 << 24)
 #define RDFLG_CRC_ERROR           (1 << 26)
+#define RDFLG_QUEUE_ERROR         (1 << 27)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -641,15 +642,15 @@ void RFPHY_IRQHandler (void)
 							
 							// TODO: use linked list instead? it takes approx 300-400us to put msg in queue
 							int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
-							if(osOK != res)
-							{
-									err1("Failed to put message in queue %i", res);
-							}
-							else
-							{
-									osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-									rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
-							}
+                            if(osOK != res)
+                            {
+                                osThreadFlagsSet(m_config.threadid, RDFLG_QUEUE_ERROR);
+                            }
+                            else
+                            {
+                                osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+                                rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
+                            }
 						}
         }
 			}
@@ -1390,6 +1391,12 @@ static void handle_radio_events (uint32_t flags)
             osTimerStart(m_ack_timeout_timer, RADIO_WAIT_FOR_ACK_SENT_MS);
         }
     }
+
+    if (flags & RDFLG_QUEUE_ERROR)
+    {
+        err1("Failed to put message in queue!");
+    }
+    
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
     // {
     //     phy_rf_rx();
