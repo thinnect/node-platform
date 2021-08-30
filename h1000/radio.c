@@ -1391,6 +1391,12 @@ static void handle_radio_events (uint32_t flags)
             osTimerStart(m_ack_timeout_timer, RADIO_WAIT_FOR_ACK_SENT_MS);
         }
     }
+
+    if (flags & RDFLG_QUEUE_ERROR)
+    {
+        err1("Failed to put message in queue!");
+    }
+    
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
     // {
     //     phy_rf_rx();
