@@ -1,3 +1,9 @@
+/**
+ * Utility functions for h1002.
+ *
+ * Copyright Thinnect Inc. 2020
+ * @license MIT
+ */
 #include "utils.h"
 
 

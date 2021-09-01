@@ -1,3 +1,9 @@
+/**
+ * Platform specific functions.
+ *
+ * Copyright Thinnect Inc. 2021
+ * @license MIT
+*/
 #include "platform.h"
 
 bool buttonstate = 0;

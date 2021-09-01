@@ -1,3 +1,9 @@
+/**
+ * Radio driver for h1002.
+ *
+ * Copyright Thinnect Inc. 2021
+ * @license MIT
+*/
 #include "loglevels.h"
 #define __MODUUL__ "radio"
 #define __LOG_LEVEL__ ( LOG_LEVEL_radio & 0xFFFF )
@@ -1595,3 +1601,4 @@ void radio_deinit (comms_layer_t* iface)
         }
     }
 }
+

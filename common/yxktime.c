@@ -13,8 +13,8 @@ uint32_t time_yxk (const time_t * t)
 {
 	if((time_t)(-1) != *t)
 	{
-		struct tm yxk;
 #ifndef __ARMCC_VERSION
+		struct tm yxk;
 		if (NULL != gmtime_r(t, &yxk))
 		{
 			yxk_zero(&yxk);
@@ -29,8 +29,8 @@ time_t yxk_time (uint32_t yxks, const time_t * now)
 {
 	if (*now != (time_t)(-1))
 	{
-		struct tm epoch;
 #ifndef __ARMCC_VERSION
+		struct tm epoch;
 		if (NULL != gmtime_r(now, &epoch))
 		{
 			yxk_zero(&epoch);

@@ -1,5 +1,12 @@
+/**
+ * Radio driver for h1002.
+ *
+ * Copyright Thinnect Inc. 2021
+ * @license MIT
+*/
 #ifndef _RADIO_H_
 #define _RADIO_H_
+
 
 #include <stdint.h>
 #include <string.h>
