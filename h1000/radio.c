@@ -177,6 +177,9 @@ static bool sending_ack = false;
 
 static uint8_t ack_seq = 0;
 
+static uint32_t max_fine_time = 0;
+static uint32_t max_carr_cnt;
+
 static void zb_hw_go (void)
 {
     *(volatile uint32_t*)(LL_HW_BASE + 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
@@ -360,26 +363,43 @@ phy_sts_t rf_performCCA (void)
 
     // enter the rx status
     rf_setRxMode(MAX_RX_TIMEOUT);
-    volatile uint32_t curTime = read_current_fine_time();
-    volatile uint32_t endTime = curTime + 128;
 
-    if (endTime < curTime)
-    {
-        while (curTime > endTime)
-        {
-            rssi_cur += rf_getRssi();
-            curTime = read_current_fine_time();
-            rssiCnt++;
-        }
-    }
-    while (curTime < endTime)
+    volatile uint32_t start_time = read_current_fine_time();
+    volatile uint32_t cur_time;
+    volatile uint32_t elapsed_time = 0;
+
+    while(elapsed_time < 128)
     {
         rssi_cur += rf_getRssi();
-        curTime = read_current_fine_time();
         rssiCnt++;
+        cur_time = read_current_fine_time();
+        if (cur_time > start_time)
+        {
+            elapsed_time += cur_time - start_time;
+            start_time = cur_time;
+        }
+        else if (cur_time < start_time)
+        {
+            elapsed_time += start_time - cur_time;
+            start_time = cur_time;
+        }
+        else
+        {
+            // do nothing
+        }
     }
+
+//    volatile uint32_t curTime0 = read_current_fine_time();
+//    volatile uint32_t curTime1 = read_current_fine_time();
+
+//    while( (curTime1 - curTime0) < 128)
+//    {
+//        rssi_cur += rf_getRssi();
+//        curTime1 = read_current_fine_time();
+//        rssiCnt++;
+//    }
    
-    rssi_peak = rssi_cur/rssiCnt;
+    rssi_peak = rssi_cur / rssiCnt;
     //debug1("RSSI_peak %d\r\n",rssi_peak);
     if (rssi_peak < m_config.cca_treshhold)
     {
@@ -409,22 +429,48 @@ phy_sts_t checkEther (void)
     // Set Rx mode when needed
     rf_setRxMode(MAX_RX_TIMEOUT);
 
-    volatile uint32_t curTime = read_current_fine_time();
-    volatile uint32_t endTime = curTime + 128;
+    volatile uint32_t start_time = read_current_fine_time();
+    volatile uint32_t cur_time;
+    volatile uint32_t elapsed_time = 0;
 
-    while (curTime > endTime)
+    while(elapsed_time < 128)
     {
         carr += rf_carriersense();
-        curTime = read_current_fine_time();
         carr_cnt++;
+        cur_time = read_current_fine_time();
+        if (cur_time > start_time)
+        {
+            elapsed_time += cur_time - start_time;
+            start_time = cur_time;
+        }
+        else if (cur_time < start_time)
+        {
+            elapsed_time += start_time - cur_time;
+            start_time = cur_time;
+        }
+        else
+        {
+            // do nothing
+        }
     }
-    while (curTime < endTime)
-    {
-        carr += rf_carriersense();
-        curTime = read_current_fine_time();
-        carr_cnt++;
-    }
-   
+    // for debugging, delete later!
+    max_fine_time = elapsed_time;
+    max_carr_cnt = carr_cnt;
+    
+//    volatile uint32_t curTime0 = read_current_fine_time();
+//    volatile uint32_t curTime1 = read_current_fine_time();
+//    
+//    while( (curTime1 - curTime0) < 128)
+//    {
+//        carr += rf_carriersense();
+//        curTime1 = read_current_fine_time();
+//        if (max_fine_time < curTime1)
+//        {
+//            max_fine_time = curTime1;
+//        }
+//        carr_cnt++;
+//    }
+    
     carr_peak = carr / carr_cnt;
 
     tx_timestamps[STOP_CHECK_ETHER] = radio_timestamp();
@@ -551,6 +597,8 @@ void RFPHY_IRQHandler (void)
             // }
             
             // do not use ACK!
+            uint16_t dest1 = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
+
 #ifdef USE_ACK
             // ACK packet received, set send done flag
             if ((packet.buffer[0] == 0x05) && (packet.buffer[1] == 0x02) && (packet.buffer[3] == m_radio_tx_num))
@@ -560,12 +608,11 @@ void RFPHY_IRQHandler (void)
                     osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
                 }
             }
-					
-						uint16_t dest1 = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
+
             // Handle ACK request with highest priority
             if ((frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT) && (dest1 == m_config.nodeaddr))
             {
-							  info1("DEST: %x NODE: %x",dest1, m_config.nodeaddr); 
+				// info1("DEST: %x NODE: %x",dest1, m_config.nodeaddr); 
                 // uint8_t seed[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
                 //uint8_t crcCode[2] = {0xff, 0xff};
                 uint8_t ackTxBuf[10];
@@ -726,7 +773,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
 
     osMutexRelease(m_radio_mutex);
     
-    debug1("snd %p e: %d", msg, err);
+    // debug1("snd %p e: %d", msg, err);
     return err;
 }
 
@@ -740,7 +787,8 @@ static void rf_wakeup_handler(void){
 static void hal_rfphy_init (void)
 {
     //========config the txPower
-    g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
+    // g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
+    g_rfPhyTxPower  = RF_PHY_TX_POWER_0DBM;
     //============config BLE_PHY TYPE
     g_rfPhyPktFmt   = PKT_FMT_ZIGBEE;
     //============config RF Frequency Offset
@@ -1097,6 +1145,7 @@ static void signal_send_done (comms_error_t err)
     //assert(NULL != send_done);
 
     //info1("snt");
+    debug1("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
 
     // debug1("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
