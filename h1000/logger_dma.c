@@ -24,8 +24,11 @@
 
 static DMA_CH_CFG_t m_cfg;
 
+#ifdef DUMP_LDMA
+uint8_t m_ldma_buf[LOGGER_DMA_BUF_SIZE];
+#else
 static uint8_t m_ldma_buf[LOGGER_DMA_BUF_SIZE];
-
+#endif
 
 static uint16_t m_buf_start = 0;
 static uint16_t m_buf_end = 0;
