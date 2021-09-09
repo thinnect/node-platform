@@ -852,7 +852,7 @@ static void radio_ack_send_timeout_cb (void*arg)
     
 static void stop_radio_now ()
 {
-    //debug1("stop");
+    // debug1("stop");
 
     // Return any pending TX messages with COMMS_EOFF
     // No mutex, queue cannot change - send not accepting msgs in stop state
@@ -1095,7 +1095,9 @@ static void signal_send_done (comms_error_t err)
     //        m_rail_sent_timestamp - m_rail_send_timestamp);
 
     //assert(NULL != send_done);
+
     //info1("snt");
+
     // debug1("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
@@ -1302,7 +1304,7 @@ static void handle_radio_rx ()
                 comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
                 //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-                //debug1("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
+                // debug1("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
 
                 int16_t rssi = packet.rssi; 
             
@@ -1380,7 +1382,7 @@ static void handle_radio_events (uint32_t flags)
 		
     if (flags & RDFLG_CRC_ERROR)
     {
-        //warn1("CRC error");
+        // warn1("CRC error");
     }
 
     if (flags & RDFLG_RAIL_TXACK_SENT)
