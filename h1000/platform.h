@@ -22,9 +22,9 @@
 
 #define FAKE_VCC P0
 
-int platform_init(void);
-void platform_setleds(uint8_t leds);
-bool platform_button(void);
+int PLATFORM_Init(void);
+void PLATFORM_LedsSet(uint8_t leds);
+bool PLATFORM_ButtonGet(void);
 
 #endif
 

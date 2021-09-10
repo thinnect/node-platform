@@ -29,7 +29,6 @@
 #include "mist_comm_am.h"
 
 #include "cmsis_os2.h"
-#include "utils.h"
 #include "mist_comm_am.h"
 
 #define MAX_PAYLOAD_SIZE 127

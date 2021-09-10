@@ -20,6 +20,8 @@ uint32_t time_yxk (const time_t * t)
 			yxk_zero(&yxk);
 			return (uint32_t)(*t - mktime(&yxk));
 		}
+#else
+#warning "time_yxk does not work for ARMCC"
 #endif
 	}
 	return UINT32_MAX;
@@ -36,6 +38,8 @@ time_t yxk_time (uint32_t yxks, const time_t * now)
 			yxk_zero(&epoch);
 			return (time_t)mktime(&epoch) + yxks;
 		}
+#else
+#warning "yxk_time does not work for ARMCC"
 #endif
 	}
 	return (time_t)(-1);

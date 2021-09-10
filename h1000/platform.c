@@ -8,7 +8,7 @@
 
 bool buttonstate = 0;
 
-int platform_init()
+int PLATFORM_Init()
 {
 	int ret = hal_gpio_pin_init(LED_1,OEN);
 	if(PPlus_SUCCESS != ret)
@@ -77,7 +77,7 @@ int platform_init()
 	
 	return PPlus_SUCCESS;
 }
-void platform_setleds(uint8_t leds)
+void PLATFORM_LedsSet(uint8_t leds)
 {
 	//LOG("Count is %d \r\n", leds);
 	
@@ -85,7 +85,7 @@ void platform_setleds(uint8_t leds)
 	hal_gpio_write(LED_2, leds & LED_2_MASK);
 	hal_gpio_write(LED_3, leds & LED_3_MASK);
 }
-bool platform_button()
+bool PLATFORM_ButtonGet()
 {
 	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
 	//WaitMs(200);

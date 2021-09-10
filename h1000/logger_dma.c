@@ -1,3 +1,9 @@
+/**
+ * DMA Logging for H1002.
+ *
+ * Copyright Thinnect Inc. 2020
+ * @license MIT
+*/
 #include "logger_dma.h"
 
 #include "dma.h"
