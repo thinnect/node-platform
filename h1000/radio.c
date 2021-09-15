@@ -719,7 +719,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
 
     comms_error_t err = COMMS_FAIL;
     
-    //debug1("rsnd: %p", msg);
+    debug2("rsnd: %p", msg);
 
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
     {
@@ -773,7 +773,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
 
     osMutexRelease(m_radio_mutex);
     
-    // debug1("snd %p e: %d", msg, err);
+    debug2("snd %p e: %d", msg, err);
     return err;
 }
 
@@ -815,7 +815,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_ch
         return COMMS_EINVAL;
     }
 
-    //debug1("opst: %d", m_state);
+    debug2("opst: %d", m_state);
         
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
@@ -848,7 +848,7 @@ static comms_error_t radio_start (comms_layer_iface_t* interface, comms_status_c
         return COMMS_EINVAL;
     }
         
-    //debug1("artst: %d", m_state);
+    debug2("startst: %d", m_state);
         
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         
@@ -894,7 +894,7 @@ static void radio_ack_send_timeout_cb (void*arg)
 {
     sending_ack = false;
     rf_setRxMode(MAX_RX_TIMEOUT);
-    //debug1("ACK send timeout");
+    debug2("ACK send timeout");
     //osThreadFlagsSet(m_config.threadid, RDFLG_ACK_SENT_TIMEOUT);
 }
     
@@ -1145,9 +1145,9 @@ static void signal_send_done (comms_error_t err)
     //assert(NULL != send_done);
 
     //info1("snt");
-    debug1("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
+    debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
 
-    // debug1("snt: %p %u", msgp, osKernelGetTickCount());
+    debug2("snt: %p %u", msgp, osKernelGetTickCount());
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
@@ -1188,7 +1188,7 @@ static void handle_radio_tx (uint32_t flags)
 
             if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
             {
-               // debug1("ackd");
+                debug2("ackd");
                 osTimerStop(m_ack_timer);
                 radio_tx_wait_ack = false;
                 _comms_set_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
@@ -1353,7 +1353,7 @@ static void handle_radio_rx ()
                 comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
                 //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-                // debug1("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
+                debug2("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
 
                 int16_t rssi = packet.rssi; 
             
@@ -1436,7 +1436,7 @@ static void handle_radio_events (uint32_t flags)
 
     if (flags & RDFLG_RAIL_TXACK_SENT)
     {
-       // debug1("ACK snt");
+        debug2("ACK snt");
         osTimerStop(m_ack_timeout_timer);
     }
     
