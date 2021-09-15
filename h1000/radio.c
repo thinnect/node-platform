@@ -428,7 +428,8 @@ phy_sts_t checkEther (void)
 
     // Set Rx mode when needed
     rf_setRxMode(MAX_RX_TIMEOUT);
-
+		
+    int32_t lock = osKernelLock();
     volatile uint32_t start_time = read_current_fine_time();
     volatile uint32_t cur_time;
     volatile uint32_t elapsed_time = 0;
@@ -453,6 +454,7 @@ phy_sts_t checkEther (void)
             // do nothing
         }
     }
+    osKernelRestoreLock(lock);
     // for debugging, delete later!
     max_fine_time = elapsed_time;
     max_carr_cnt = carr_cnt;
