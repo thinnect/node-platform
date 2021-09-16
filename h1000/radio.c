@@ -20,7 +20,7 @@
 //#define LOG_RX_TIMESTAMPS 1
 #define USE_ACK 1
 
-#define RADIO_MAX_SEND_TIME_MS 500UL
+#define RADIO_MAX_SEND_TIME_MS 50UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
 #define RADIO_WAIT_FOR_ACK_SENT_MS 5
 
@@ -1355,7 +1355,11 @@ static void handle_radio_rx ()
                 comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, rts);
                 //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, &msg, rts);
 
-                debug2("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
+                if (ST_OFF != m_state)
+                {
+                    debug2("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
+                }
+                //debug2("rx: %02X a:%02X", packet.buffer[12],packet.buffer[1]);
 
                 int16_t rssi = packet.rssi; 
             
