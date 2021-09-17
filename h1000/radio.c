@@ -207,24 +207,24 @@ static void zb_hw_go (void)
 }
 
 
-void zb_hw_stop(void)
+bool zb_hw_stop(void)
 {
-    uint8_t cnt=0;
+    uint8_t cnt = 0;
+    
     ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
 
     while (RFPHY_IDLE != m_config.mode)
-    {
-			
+    {	
         WaitRTCCount(1);
-			
         cnt++;
- 
-        if(cnt>10)
+        if (cnt > 10)
         {
-            err1("!hwstop");
-            break;
+            err1("!hwstop mode:%d", m_config.mode);
+            return false;
         }
+        ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
     };
+    return true;
 }
 
 static void zb_hw_timing (void)
@@ -336,7 +336,9 @@ uint8_t rf_carriersense (void)
 
 void rf_setRxMode (uint16_t timeout)
 {
-	
+	bool stop_result;
+    uint8_t cnt = 0;
+    
     if (m_config.mode == RFPHY_RX_ONLY || m_config.mode == RFPHY_TX_RXACK)
     {
         return;
@@ -344,9 +346,17 @@ void rf_setRxMode (uint16_t timeout)
     else if (m_config.mode == RFPHY_TX_ONLY)
     {
         // if in tx state, abort the tx first
-        zb_hw_stop();
+        stop_result = zb_hw_stop();
+        if (false == stop_result)
+        {
+            while ((cnt < 3) && (false == stop_result))
+            {
+                ll_hw_go();
+                stop_result = zb_hw_stop();
+                ++cnt;
+            }
+        }
     }
-		
     zb_hw_set_srx(timeout);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
@@ -955,6 +965,9 @@ static void start_radio_now ()
 
 void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
 {
+    bool stop_result;
+    uint8_t cnt = 0;
+    
     // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     // uint8_t crcCode[2]={0xff,0xff};
     
@@ -967,16 +980,25 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
 
     tx_timestamps[RF_TX] = radio_timestamp();
     
-    if (m_config.mode != RFPHY_IDLE)
-    {
-        zb_hw_stop();
-    }
- 
-    zb_hw_set_stx();
-    
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
     ll_hw_rst_tfifo(); 
+
+    if (m_config.mode != RFPHY_IDLE)
+    {
+        stop_result = zb_hw_stop();
+        if (false == stop_result)
+        {
+            while ((cnt < 3) && (false == stop_result))
+            {
+                ll_hw_go();
+                stop_result = zb_hw_stop();
+                ++cnt;
+            }
+        }    
+    }
+    
+    zb_hw_set_stx();
 
     ll_hw_write_tfifo(&buf[0], len);
     ll_hw_go();
@@ -1481,7 +1503,7 @@ static void handle_radio_events (uint32_t flags)
 static void radio_task (void* arg)
 {
     bool running = false;
-
+    bool led_set = false;
     // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
     uint32_t state;
     uint32_t flags = osFlagsErrorTimeout;
@@ -1571,6 +1593,18 @@ static void radio_task (void* arg)
                 debug1("deinit");
                 osThreadExit();
             }
+        }
+        
+        // toggle LED
+        if (true == led_set)
+        {
+            hal_gpio_write(GPIO_P25, 0);
+            led_set = false;
+        }
+        else
+        {
+            hal_gpio_write(GPIO_P25, 1);
+            led_set = true;
         }
     }
 }
