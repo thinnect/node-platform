@@ -3,10 +3,36 @@
  *
  * Copyright Thinnect Inc. 2021
  * @license MIT
-*/
+*/ 
 #include "platform.h"
 
+#include "uart.h"
+#include "gpio.h"
+
 bool buttonstate = 0;
+
+void PLATFORM_uart(void)
+{
+  uart_Cfg_t cfg = {
+#ifndef TEST_SYSTEM
+	.tx_pin = P9,
+  .rx_pin = P10,
+#else
+	.tx_pin = P14,
+  .rx_pin = P15,
+#endif
+  .rts_pin = GPIO_DUMMY,
+  .cts_pin = GPIO_DUMMY,
+  .baudrate = 115200,
+  .use_fifo = TRUE,
+  .hw_fwctrl = FALSE,
+  .use_tx_buf = FALSE,
+  .parity     = FALSE,
+  .evt_handler = NULL,
+  };
+  hal_uart_init(cfg, UART0);//uart init
+}
+
 
 int PLATFORM_Init()
 {
