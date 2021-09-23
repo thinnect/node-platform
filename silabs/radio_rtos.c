@@ -1047,7 +1047,7 @@ static void handle_radio_rx()
 
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
                 {
-                    warn3("same seqNum:%02"PRIX8, buffer[3]);
+                    warn3("same seqNum:%02"PRIX8" %04"PRIX16, buffer[3], source);
                 }
                 else if ((packetInfo.packetBytes >= 12)
                        &&(buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
