@@ -217,10 +217,17 @@ bool zb_hw_stop(void)
     {	
         WaitRTCCount(1);
         cnt++;
-        if (cnt > 10)
+        if (cnt > 100)
         {
-            err1("!hwstop mode:%d", m_config.mode);
-            return false;
+            if (RFPHY_IDLE == m_config.mode)
+            {
+                return true;
+            }
+            else
+            {
+                err1("!hwstop mode:%d", m_config.mode);
+                return false;
+            }
         }
         ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
     };
@@ -352,6 +359,7 @@ void rf_setRxMode (uint16_t timeout)
             while ((cnt < 3) && (false == stop_result))
             {
                 ll_hw_go();
+                WaitRTCCount(5);
                 stop_result = zb_hw_stop();
                 ++cnt;
             }
@@ -992,6 +1000,7 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
             while ((cnt < 3) && (false == stop_result))
             {
                 ll_hw_go();
+                WaitRTCCount(5);
                 stop_result = zb_hw_stop();
                 ++cnt;
             }
