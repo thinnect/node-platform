@@ -212,7 +212,6 @@ bool zb_hw_stop(void)
     uint8_t cnt = 0;
     
     ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
-
     while (RFPHY_IDLE != m_config.mode)
     {	
         WaitRTCCount(1);
@@ -971,7 +970,7 @@ static void start_radio_now ()
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
 }
 
-void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
+void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 {
     bool stop_result;
     uint8_t cnt = 0;
@@ -1008,6 +1007,19 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck)
     }
     
     zb_hw_set_stx();
+		
+    if (evt_time != 0)
+    {
+        uint32_t diff, ti;
+        uint16_t count = len - 19;
+        ti = radio_timestamp();
+        diff = evt_time - ti;
+
+        buf[13+count] = diff>>24;
+        buf[14+count] = diff>>16;
+        buf[15+count] = diff>>8;
+        buf[16+count] = diff;
+    }
 
     ll_hw_write_tfifo(&buf[0], len);
     ll_hw_go();
@@ -1089,25 +1101,15 @@ static void radio_send_message (comms_msg_t * msg)
 
     //	zb_hw_set_trx(0);
 
+    uint32_t evt_time = 0;
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
-        uint32_t evt_time, diff, ti;
+        uint32_t diff, ti;
         //debug1("evt time valid");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
-
-        //evt_time = comms_get_event_time_us(iface, msg);
+				buffer[12+count] = amid;
         evt_time = comms_get_event_time(iface, msg);
-        ti = radio_timestamp();
-        diff = evt_time - (ti+5); // It will take at least 250us to get the packet going, round it up
-
-        //debug1("diff: %d", diff);
-        buffer[12+count] = amid; // Actual AMID is carried after payload
-        buffer[13+count] = diff>>24;
-        buffer[14+count] = diff>>16;
-        buffer[15+count] = diff>>8;
-        buffer[16+count] = diff;
-        //debug1("diff: %i", diff);
         count += 5;
     }
     else
@@ -1125,7 +1127,7 @@ static void radio_send_message (comms_msg_t * msg)
 		
     if (checkEther() == PHY_CCA_IDLE)
     {
-        rf_tx(buffer, total, radio_tx_wait_ack);
+        rf_tx(buffer, total, radio_tx_wait_ack, evt_time);
     }
     else
     {
