@@ -44,10 +44,18 @@ static osThreadId_t m_id = 0;
 static osMutexId_t m_log_mutex;
 static bool m_ldma_idle;
 static bool m_uart_active;
+static osTimerId_t m_fbtimer;
 
 void dma_callback(DMA_CH_t chn)
 {
+		osTimerStop(m_fbtimer);
 		osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_DONE);
+}
+
+extern void dbg_printf(const char *format, ...);
+void fallback_timer_cb(void *arg)
+{
+	 dbg_printf(" DMA Logger failed ");
 }
 
 
@@ -92,6 +100,7 @@ static bool try_dma_start()
 		int retval = hal_dma_config_channel(DMA_CH_0,&m_cfg);
 		if(retval == PPlus_SUCCESS)
 		{
+			osTimerStart(m_fbtimer, 100000);
 			hal_dma_start_channel(DMA_CH_0);
 			if(m_cfg.enable_int == false)
 			{
@@ -194,6 +203,7 @@ bool logger_dma_init()
 		ret = hal_dma_init();
 		const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 1024};
 		m_log_mutex = osMutexNew(NULL);
+		m_fbtimer = osTimerNew(fallback_timer_cb, osTimerOnce, NULL, NULL);
 
 		HAL_DMA_t ch_cfg;
 		ch_cfg.dma_channel = DMA_CH_0;
