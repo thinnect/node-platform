@@ -56,6 +56,7 @@ extern void dbg_printf(const char *format, ...);
 void fallback_timer_cb(void *arg)
 {
 	 dbg_printf(" DMA Logger failed ");
+	 osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_DONE);
 }
 
 
