@@ -24,7 +24,8 @@
 #define LOGGER_LDMA_MAX_TRANSFER 512
 #define LOGGER_THREAD_FLAG_LDMA_DONE 0x00000001U
 #define LOGGER_THREAD_FLAG_NEW_DATA  0x00000010U
-#define LOGGER_THREAD_FLAGS          0x00000011U
+#define LOGGER_THREAD_FLAG_LDMA_FAIL 0x00000100U
+#define LOGGER_THREAD_FLAGS          0x00000111U
 #define STR_LOGGER_FULL_MESSAGE "\nfull\n"
 
 
@@ -55,8 +56,9 @@ void dma_callback(DMA_CH_t chn)
 extern void dbg_printf(const char *format, ...);
 void fallback_timer_cb(void *arg)
 {
+	 hal_dma_stop_channel(DMA_CH_0);
 	 dbg_printf(" DMA Logger failed ");
-	 osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_DONE);
+	 osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_FAIL);
 }
 
 
@@ -128,6 +130,11 @@ static void ldma_thread (void* argument)
 			busy = false;
 			m_buf_full = false;
 			m_buf_start = m_buf_pos;
+		}
+		
+		if(flags & LOGGER_THREAD_FLAG_LDMA_FAIL)
+		{
+				busy = false;
 		}
 
 		if ((m_buf_start >= LOGGER_DMA_BUF_SIZE)||(m_buf_end >= LOGGER_DMA_BUF_SIZE))
