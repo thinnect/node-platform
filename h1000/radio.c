@@ -818,7 +818,8 @@ static void hal_rfphy_init (void)
 {
     //========config the txPower
     // g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
-    g_rfPhyTxPower  = RF_PHY_TX_POWER_0DBM;
+    // g_rfPhyTxPower  = RF_PHY_TX_POWER_0DBM;
+    g_rfPhyTxPower  = RF_PHY_TX_POWER_5DBM;
     //============config BLE_PHY TYPE
     g_rfPhyPktFmt   = PKT_FMT_ZIGBEE;
     //============config RF Frequency Offset
@@ -835,6 +836,8 @@ static void hal_rfphy_init (void)
     NVIC_SetPriority((IRQn_Type)TIM4_IRQn, IRQ_PRIO_HIGH);     //LL_EXA_ADV
 
     //hal_pwrmgr_register(MOD_USR0, NULL, rf_wakeup_handler);
+    //========config txPower can reach max
+    rf_phy_ini();
 }
 
 static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
@@ -1675,7 +1678,7 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     const osThreadAttr_t main_thread_attr = 
     {
         .name = "radio",
-        .priority =  osPriorityNormal // osPriorityNormal osPriorityHigh osPriorityAboveNormal
+        .priority =  osPriorityHigh // osPriorityNormal osPriorityHigh osPriorityAboveNormal
     };
     
     m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
