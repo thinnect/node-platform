@@ -27,8 +27,6 @@
 bool buttonstate = 0;
 volatile uint8_t g_clk32K_config;
 
-
-
 static void hal_low_power_io_init(void)
 {
    //========= pull all io to gnd by default
@@ -83,10 +81,9 @@ void hal_init(void)
     SystemCoreClockUpdate();
 
     hal_pwrmgr_init();
-
     xflash_Ctx_t cfg =
     {
-        .spif_ref_clk   =   SYS_CLK_DLL_64M,
+			  .spif_ref_clk   =   SYS_CLK_DLL_64M,
         .rd_instr       =   XFRD_FCMD_READ_DUAL
     };
     hal_spif_cache_init(cfg);
