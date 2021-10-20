@@ -23,7 +23,7 @@
 #define RADIO_MAX_SEND_TIME_MS 50UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
 #define RADIO_WAIT_FOR_ACK_SENT_MS 5
-
+#define RADIO_WAIT_HW_STOP_CNT 100
 
 #define RADIO_BROADCAST_ADDR 0xFFFF
 
@@ -119,6 +119,10 @@ static volatile uint8_t rx_frame_error;
 static volatile uint8_t rx_abort;
 static volatile uint8_t rx_fail;
 static volatile uint8_t tx_ack_sent;
+
+static uint32_t radio_timestamp ();
+static volatile uint32_t m_hw_stop_start;
+static volatile uint32_t m_hw_stop_end;
 
 enum
 {
@@ -226,27 +230,35 @@ static void zb_hw_go (void)
 
 bool zb_hw_stop(void)
 {
-    uint8_t cnt = 0;
+    uint32_t cnt = 0;
     
-    ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
+    // for debugging only!
+    m_hw_stop_start = radio_timestamp();
+    
     while (RFPHY_IDLE != m_config.mode)
     {	
+        ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
         WaitRTCCount(1);
         cnt++;
-        if (cnt > 100)
+        if (cnt > RADIO_WAIT_HW_STOP_CNT)
         {
             if (RFPHY_IDLE == m_config.mode)
             {
+                // for debugging only!
+                m_hw_stop_end = radio_timestamp();
                 return true;
             }
             else
             {
+                // for debugging only!
+                m_hw_stop_end = radio_timestamp();
                 err1("!hwstop mode:%d", m_config.mode);
                 return false;
             }
         }
-        ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
     };
+    // for debugging only!
+    m_hw_stop_end = radio_timestamp();
     return true;
 }
 
@@ -1199,8 +1211,20 @@ static void signal_send_done (comms_error_t err)
 
     //info1("snt");
     debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
-
     debug2("snt: %p %u", msgp, osKernelGetTickCount());
+
+    // check how much hw_stop() take time
+    if (m_hw_stop_end != m_hw_stop_start)
+    {
+        if (m_hw_stop_end > m_hw_stop_start)
+        {
+            warn1("hwstop:%u", m_hw_stop_end - m_hw_stop_start);
+        }
+        else
+        {
+            warn1("hwstop:%u", m_hw_stop_start - m_hw_stop_end);
+        }
+    }
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
