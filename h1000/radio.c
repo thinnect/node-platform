@@ -180,6 +180,23 @@ static uint8_t ack_seq = 0;
 static uint32_t max_fine_time = 0;
 static uint32_t max_carr_cnt;
 
+
+// Packets actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_packets;
+
+// Bytes actually transmitted (energy for TX spent)
+static uint32_t m_transmitted_bytes;
+
+static void update_tx_stats(comms_msg_t * msg)
+{
+    m_transmitted_packets++; // Packet was actually sent out
+    m_transmitted_bytes += (14 // 12 bytes header + 2 bytes CRC
+        + comms_get_payload_length((comms_layer_t *)&m_radio_iface, msg)
+        + (comms_event_time_valid((comms_layer_t *)&m_radio_iface, msg) ? 5 : 0)
+        + 2);
+}
+
+
 static void zb_hw_go (void)
 {
     *(volatile uint32_t*)(LL_HW_BASE + 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
@@ -807,7 +824,7 @@ static void hal_rfphy_init (void)
 {
     //========config the txPower
     // g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
-    g_rfPhyTxPower  = RF_PHY_TX_POWER_0DBM;
+    g_rfPhyTxPower  = RF_PHY_TX_POWER_5DBM;
     //============config BLE_PHY TYPE
     g_rfPhyPktFmt   = PKT_FMT_ZIGBEE;
     //============config RF Frequency Offset
@@ -824,6 +841,7 @@ static void hal_rfphy_init (void)
     NVIC_SetPriority((IRQn_Type)TIM4_IRQn, IRQ_PRIO_HIGH);     //LL_EXA_ADV
 
     //hal_pwrmgr_register(MOD_USR0, NULL, rf_wakeup_handler);
+		rf_phy_ini();
 }
 
 static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
@@ -1219,7 +1237,7 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has completed -----------------------------------------------
         if (flags & RDFLG_RAIL_SEND_DONE)
         {
-            //update_tx_stats(radio_msg_sending->msg); TODO
+            update_tx_stats(radio_msg_sending->msg);
 
             if (radio_tx_wait_ack) // Alternatively we should get rx_ack_timeout
             {
@@ -1702,5 +1720,15 @@ void radio_deinit (comms_layer_t* iface)
             osThreadYield(); // Wait for termination ...
         }
     }
+}
+		
+uint32_t radio_tx_packets()
+{
+    return m_transmitted_packets;
+}
+
+uint32_t radio_tx_bytes()
+{
+    return m_transmitted_bytes;
 }
 
