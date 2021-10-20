@@ -821,6 +821,8 @@ static void hal_rfphy_init (void)
     NVIC_SetPriority((IRQn_Type)TIM4_IRQn, IRQ_PRIO_HIGH);     //LL_EXA_ADV
 
     //hal_pwrmgr_register(MOD_USR0, NULL, rf_wakeup_handler);
+	
+		rf_phy_ini();
 }
 
 static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_change_f* cb, void* user)
