@@ -5,6 +5,7 @@
  * @license MIT
 */ 
 #include "platform.h"
+#include "platform_io.h"
 
 #include "rf_phy_driver.h"
 #include "global_config.h"
@@ -70,7 +71,7 @@ static void hal_low_power_io_init(void)
 }
 
 
-void hal_init(void)
+static void hal_init(void)
 {
     hal_low_power_io_init();
 
