@@ -11,7 +11,7 @@
 #include "error.h"
 #include "log.h"
 
-int PLATFORM_Init(void);
+void PLATFORM_Init(void);
 void PLATFORM_LedsSet(uint8_t leds);
 bool PLATFORM_ButtonGet(void);
 void PLATFORM_uart(void);
