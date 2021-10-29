@@ -53,6 +53,8 @@ extern const char * g_panic_str;
 /**
  * Panic, recording the source(file), line and an info string.
  */
+
+#ifndef __ARMCC_VERSION
 #define sys_panic(str)                                      \
 ({                                                          \
     STATIC_CONST char moduulROM[] PROGMEM = __MODUUL__;     \
@@ -62,5 +64,8 @@ extern const char * g_panic_str;
         g_panic_str = strROM;                               \
         sys_panic_action();                                 \
 })
+#else
+#define sys_panic(str)
+#endif
 
 #endif//SYS_PANIC_H_

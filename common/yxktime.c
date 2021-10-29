@@ -13,12 +13,16 @@ uint32_t time_yxk (const time_t * t)
 {
 	if((time_t)(-1) != *t)
 	{
+#ifndef __ARMCC_VERSION
 		struct tm yxk;
 		if (NULL != gmtime_r(t, &yxk))
 		{
 			yxk_zero(&yxk);
 			return (uint32_t)(*t - mktime(&yxk));
 		}
+#else
+#warning "time_yxk does not work for ARMCC"
+#endif
 	}
 	return UINT32_MAX;
 }
@@ -27,12 +31,16 @@ time_t yxk_time (uint32_t yxks, const time_t * now)
 {
 	if (*now != (time_t)(-1))
 	{
+#ifndef __ARMCC_VERSION
 		struct tm epoch;
 		if (NULL != gmtime_r(now, &epoch))
 		{
 			yxk_zero(&epoch);
 			return (time_t)mktime(&epoch) + yxks;
 		}
+#else
+#warning "yxk_time does not work for ARMCC"
+#endif
 	}
 	return (time_t)(-1);
 }
