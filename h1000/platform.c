@@ -24,7 +24,7 @@
 #include "clock.h"
 #include "flash.h"
 #include "version.h"
-
+#include "radio.h"
 
 bool buttonstate = 0;
 volatile uint8_t g_clk32K_config;
@@ -32,7 +32,8 @@ volatile uint8_t g_clk32K_config;
 static void hal_low_power_io_init(void)
 {
    //========= pull all io to gnd by default
-    ioinit_cfg_t ioInit[]= {
+    ioinit_cfg_t ioInit[]=
+    {
         //TSOP6252 10 IO
        {GPIO_P02,   GPIO_FLOATING   },/*SWD*/
        {GPIO_P03,   GPIO_FLOATING   },/*SWD*/
@@ -64,7 +65,8 @@ static void hal_low_power_io_init(void)
     for(uint8_t i=0;i<sizeof(ioInit)/sizeof(ioinit_cfg_t);i++)
         hal_gpio_pull_set(ioInit[i].pin,ioInit[i].type);
 
-    DCDC_CONFIG_SETTING(0x0a); DCDC_REF_CLK_SETTING(1);
+    DCDC_CONFIG_SETTING(0x0a);
+    DCDC_REF_CLK_SETTING(1);
     DIG_LDO_CURRENT_SETTING(0x01);
     hal_pwrmgr_RAM_retention(RET_SRAM0);
     hal_pwrmgr_RAM_retention_set();
@@ -85,34 +87,31 @@ static void hal_init(void)
     hal_pwrmgr_init();
     xflash_Ctx_t cfg =
     {
-			  .spif_ref_clk   =   SYS_CLK_DLL_64M,
+        .spif_ref_clk   =   SYS_CLK_DLL_64M,
         .rd_instr       =   XFRD_FCMD_READ_DUAL
     };
     hal_spif_cache_init(cfg);
     hal_gpio_init();
 }
 
-
-
 void PLATFORM_Init()
 {
-	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
-  g_clk32K_config = CLK_32K_XTAL;
+    g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
+    g_clk32K_config = CLK_32K_XTAL;
 
-
-  drv_irq_init();
-  init_config();
-  hal_init();
-	
+    drv_irq_init();
+    init_config();
+    hal_init();
 }
+
 void PLATFORM_LedsSet(uint8_t leds)
 {
 	//LOG("Count is %d \r\n", leds);
-	
 	hal_gpio_write(LED_1, leds & LED_1_MASK);
 	hal_gpio_write(LED_2, leds & LED_2_MASK);
 	hal_gpio_write(LED_3, leds & LED_3_MASK);
 }
+
 bool PLATFORM_ButtonGet()
 {
 	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
