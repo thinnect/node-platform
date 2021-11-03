@@ -790,7 +790,7 @@ static void hal_rfphy_init (void)
 {
     //========config the txPower
     // g_rfPhyTxPower  = RF_PHY_TX_POWER_EXTRA_MAX;
-    g_rfPhyTxPower = RF_PHY_TX_POWER_5DBM;
+    g_rfPhyTxPower = RF_PHY_TX_POWER_0DBM;
     //============config BLE_PHY TYPE
     g_rfPhyPktFmt = PKT_FMT_ZIGBEE;
     //============config RF Frequency Offset
