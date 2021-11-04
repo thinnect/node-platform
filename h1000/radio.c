@@ -16,6 +16,9 @@
 #include "assert.h"
 
 
+#include "gpio.h"
+
+
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
 #define USE_ACK 1
@@ -82,6 +85,9 @@ struct radio_queue_element
     radio_queue_element_t* next;
 };
 // -----------------------------------------------------------------------------
+
+extern void dbg_printf(const char *format, ...);
+
 
 // TX queue with a linked list -------------------------------------------------
 static radio_queue_element_t radio_msg_queue_memory[7];
@@ -224,6 +230,8 @@ static void zb_hw_go (void)
 bool zb_hw_stop(void)
 {
     uint32_t cnt = 0;
+	
+		gpio_write(P18,1);
     
     // for debugging only!
     m_hw_stop_start = radio_timestamp();
@@ -239,6 +247,7 @@ bool zb_hw_stop(void)
             {
                 // for debugging only!
                 m_hw_stop_end = radio_timestamp();
+								gpio_write(P18,0);
                 return true;
             }
             else
@@ -246,12 +255,14 @@ bool zb_hw_stop(void)
                 // for debugging only!
                 m_hw_stop_end = radio_timestamp();
                 err1("!hwstop mode:%d", m_config.mode);
+								gpio_write(P18,0);
                 return false;
             }
         }
     };
     // for debugging only!
     m_hw_stop_end = radio_timestamp();
+		gpio_write(P18,0);
     return true;
 }
 
@@ -364,6 +375,7 @@ uint8_t rf_carriersense (void)
 
 void rf_setRxMode (uint16_t timeout)
 {
+	  //dbg_printf("I|radio:379|Inside %s \n",__FUNCTION__);
     uint8_t cnt = 0;
     
     if (m_config.mode == RFPHY_RX_ONLY || m_config.mode == RFPHY_TX_RXACK)
@@ -441,7 +453,7 @@ phy_sts_t checkEther (void)
     mode = ll_hw_get_tr_mode();
     debug1("m_cfg:%u mode:%u", m_config.mode, mode);
 #endif
-
+		gpio_write(P1,1);
     // Set Rx mode when needed
     rf_setRxMode(MAX_RX_TIMEOUT);
         
@@ -449,7 +461,7 @@ phy_sts_t checkEther (void)
     volatile uint32_t start_time = read_current_fine_time();
     volatile uint32_t cur_time;
     volatile uint32_t elapsed_time = 0;
-
+		
     while(elapsed_time < 128)
     {
         carr += rf_carriersense();
@@ -480,10 +492,12 @@ phy_sts_t checkEther (void)
     carr_peak = carr / carr_cnt;
     if (carr_peak < m_config.cca_treshhold)
     {
+				gpio_write(P1,0);
         return PHY_CCA_IDLE;
     }
     else
     {
+				gpio_write(P1,0);
         return PHY_CCA_BUSY;
     }
 }
@@ -506,6 +520,7 @@ void RFPHY_IRQHandler (void)
     m_irq_flag = ll_hw_get_irq_status();
         
     m_config.mode = RFPHY_IDLE;
+		
 
     if (!(m_irq_flag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
@@ -521,6 +536,8 @@ void RFPHY_IRQHandler (void)
 //        llWaitingIrq = false;
 //        return;
 //    }
+		
+		gpio_write(P20, 1);
     
     HAL_ENTER_CRITICAL_SECTION();
 
@@ -535,6 +552,7 @@ void RFPHY_IRQHandler (void)
         if (sending_ack)
         {
             sending_ack = false;
+					//dbg_printf("I|radio:557| Ack sent flag\n");
             rx_timestamps[SEND_DONE_ACK] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
                     
@@ -542,11 +560,14 @@ void RFPHY_IRQHandler (void)
         else if (!radio_tx_wait_ack)
         {
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
+						//dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+						
                     
         }
         else if (radio_tx_wait_ack)
         {
+						//dbg_printf("I|radio:557|Starting ack tmr\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
         }
 #else
@@ -581,7 +602,7 @@ void RFPHY_IRQHandler (void)
         else if (m_irq_flag & LIRQ_CERR)
         {
             pktLen = 0;
-            rf_setRxMode(MAX_RX_TIMEOUT);
+            rf_setRxMode(MAX_RX_TIMEOUT); //miks?
             osThreadFlagsSet(m_config.threadid, RDFLG_CRC_ERROR);
         }
 
@@ -592,12 +613,6 @@ void RFPHY_IRQHandler (void)
             memcpy(&packet.buffer[0], &buffer[0], 140);
             // do the filtering
             mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-
-            // if ( ((fcf1 & MAC_FCF_FRAME_TYPE) == 0x02) && (pktLen == 6)) {
-            //     lmac_ackCb(MAC_FCF_FRAME_PENDING_BIT & fcf1, *(rxPkt->psdu+3), ISR_entry_time, zbRssi, zbCarrSens);
-            //     fDrop = 1; // ACK packet
-            //     break;
-            // }
             
             // do not use ACK!
             uint16_t dest1 = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
@@ -678,7 +693,7 @@ void RFPHY_IRQHandler (void)
             
             if (m_config.mode == RFPHY_IDLE)
             {
-                rf_setRxMode(MAX_RX_TIMEOUT);
+                rf_setRxMode(MAX_RX_TIMEOUT); //miks does not make any sense
             }
                         
             // if not ack
@@ -715,6 +730,8 @@ void RFPHY_IRQHandler (void)
     ll_hw_clr_irq();
     
     HAL_EXIT_CRITICAL_SECTION();
+		
+		gpio_write(P20, 0);
 }
 
 static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* msg, comms_send_done_f* cb, void* user)
@@ -728,6 +745,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
         return (COMMS_EINVAL);
     }
     
+		gpio_write(P7,1);
     memset((void*)&tx_timestamps[0], 0x00, sizeof(tx_timestamps));
     tx_timestamps[START_RADIO_SEND] = radio_timestamp();
     
@@ -1114,7 +1132,8 @@ static void signal_send_done (comms_error_t err)
     comms_msg_t * msgp;
     void * user;
     uint32_t qtime;
-
+		
+		gpio_write(P7, 0);
     tx_timestamps[SIGNAL_SEND_DONE] = radio_timestamp();
 
     osTimerStop(m_send_timeout_timer);
@@ -1496,41 +1515,27 @@ static void radio_task (void* arg)
 {
     bool running = false;
     bool led_set = false;
-    // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
+
     uint32_t state;
     uint32_t flags = osFlagsErrorTimeout;
 
-    //debug1("Thread starts");
     flags = osThreadFlagsClear(RDFLGS_ALL);
-   // debug1("ThrFlgs:0x%X", flags);
 
     for (;;)
     {
-
-        flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
-
-        // debug1("ThrFlgs:0x%X", flags);
-        if (flags & ~RDFLGS_ALL)
-        {
-            err1("ThrdError:%X", flags);
-            continue;
-        }
-    
-//    	while (osFlagsErrorTimeout == flags)
-//        {
-//            uint32_t wait = osWaitForever;
-//            if ((running) || (NULL != radio_msg_queue_head))
-//            {
-//                wait = 1;
-//            }
-//            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
-//        }
-
-        // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 1);
-        // if (flags == osFlagsErrorTimeout)
-        // {
-        //     flags = 0;
-        // }
+				gpio_write(P26,0);
+        flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 20);
+				gpio_write(P26, 1);
+			
+			
+			if(osFlagsErrorTimeout == flags)
+			{
+					osDelay(1);
+					continue;
+			}
+			
+			info1("Flags %x", flags);
+			
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
         osMutexRelease(m_radio_mutex);
