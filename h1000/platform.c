@@ -25,9 +25,24 @@
 #include "flash.h"
 #include "version.h"
 
+#include "sys_panic.h"
+
+/*----------------------------------------------------------------------------
+  Define clocks
+ *----------------------------------------------------------------------------*/
+#define  XTAL            (16000000UL)     /* Oscillator frequency */
+
+#define  SYSTEM_CLOCK    (6 * XTAL)
+
+/*----------------------------------------------------------------------------
+  System Core Clock Variable
+ *----------------------------------------------------------------------------*/
+uint32_t SystemCoreClock = SYSTEM_CLOCK;  /* System Core Clock Frequency */
+
 
 bool buttonstate = 0;
 volatile uint8_t g_clk32K_config;
+
 
 static void hal_low_power_io_init(void)
 {
@@ -51,7 +66,10 @@ static void hal_low_power_io_init(void)
        {GPIO_P07,   GPIO_PULL_UP  },
        {GPIO_P17,   GPIO_FLOATING   },/*32k xtal*/
        {GPIO_P23,   GPIO_PULL_UP  },
-       {GPIO_P24,   GPIO_PULL_DOWN  },
+			 {GPIO_P11,   GPIO_PULL_DOWN  },
+			 {GPIO_P18,   GPIO_PULL_DOWN  },
+       {GPIO_P20,   GPIO_PULL_DOWN  },
+			 {GPIO_P24,   GPIO_PULL_DOWN  },
        {GPIO_P25,   GPIO_PULL_DOWN  },
        {GPIO_P26,   GPIO_PULL_DOWN  },
        {GPIO_P27,   GPIO_PULL_DOWN  },
@@ -96,13 +114,18 @@ static void hal_init(void)
 
 void PLATFORM_Init()
 {
-	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
+	g_system_clk = SYS_CLK_DLL_96M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
   g_clk32K_config = CLK_32K_XTAL;
 
 
   drv_irq_init();
   init_config();
   hal_init();
+	
+	
+	hal_gpio_pin_init(P11, GPIO_INPUT);
+	hal_gpio_pin_init(P18, GPIO_INPUT);
+	hal_gpio_pin_init(P20, GPIO_INPUT);
 	
 }
 void PLATFORM_LedsSet(uint8_t leds)
@@ -118,4 +141,41 @@ bool PLATFORM_ButtonGet()
 	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
 	//WaitMs(200);
 	return (buttonstate != hal_gpio_read(PLATFORM_BUTTON));
+}
+
+
+/*----------------------------------------------------------------------------
+  System Core Clock update function
+ *----------------------------------------------------------------------------*/
+void SystemCoreClockUpdate (void)
+{
+	
+	switch(g_system_clk)
+	{
+		case SYS_CLK_XTAL_16M:
+			SystemCoreClock = XTAL;
+			break;
+		case SYS_CLK_DLL_32M:
+			SystemCoreClock = 2 * XTAL;
+			break;
+		case SYS_CLK_DLL_48M:
+			SystemCoreClock = 3 * XTAL;
+			break;
+		case SYS_CLK_DLL_64M:
+			SystemCoreClock = 4 * XTAL;
+			break;
+		case SYS_CLK_DLL_96M:
+			SystemCoreClock = 6 * XTAL;
+			break;
+		default:
+			sys_panic("Clock Init");
+	}
+}
+
+/*----------------------------------------------------------------------------
+  System initialization function
+ *----------------------------------------------------------------------------*/
+void SystemInit (void)
+{
+  SystemCoreClock = SYSTEM_CLOCK;
 }
