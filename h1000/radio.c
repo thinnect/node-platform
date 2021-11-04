@@ -738,7 +738,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
 {
     comms_error_t err = COMMS_FAIL;
     
-    debug2("rsnd: %p", msg);
+    debug2("rsnd: %p %d", msg, osKernelGetTickCount());
 
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
     {
@@ -793,7 +793,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
 
     osMutexRelease(m_radio_mutex);
     
-    debug2("snd %p e: %d", msg, err);
+    debug2("snd %p e: %d, %d", msg, err, osKernelGetTickCount());
     return err;
 }
 
@@ -1014,6 +1014,8 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 
     ll_hw_write_tfifo(&buf[0], len);
     ll_hw_go();
+		
+		info1("rf : %d",osKernelGetTickCount());
     
     tx_timestamps[RF_TX_DONE] = radio_timestamp();
     
@@ -1534,7 +1536,7 @@ static void radio_task (void* arg)
 					continue;
 			}
 			
-			info1("Flags %x", flags);
+			info1("Flags %x, %d", flags, osKernelGetTickCount());
 			
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
