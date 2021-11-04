@@ -21,7 +21,7 @@
 
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
-#define USE_ACK 1
+//#define USE_ACK 1
 
 #define RADIO_MAX_SEND_TIME_MS 50UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
@@ -441,6 +441,8 @@ phy_sts_t rf_performCCA (void)
 
 phy_sts_t checkEther (void)
 {
+    return PHY_CCA_IDLE;
+#if 0
     uint32_t carr_peak = 150;
     uint32_t carr = 0;
     uint32_t carr_cnt = 0;
@@ -500,6 +502,7 @@ phy_sts_t checkEther (void)
 				gpio_write(P1,0);
         return PHY_CCA_BUSY;
     }
+#endif
 }
 
 void RFPHY_IRQHandler (void)
@@ -745,7 +748,7 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
         return (COMMS_EINVAL);
     }
     
-		gpio_write(P7,1);
+	gpio_write(P7,1);
     memset((void*)&tx_timestamps[0], 0x00, sizeof(tx_timestamps));
     tx_timestamps[START_RADIO_SEND] = radio_timestamp();
     
@@ -781,7 +784,6 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
             qn->next = qm;
         }
 
-        osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
         // info3("snd %p \r\n", msg);
         err = COMMS_SUCCESS;
     }
@@ -794,6 +796,10 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
     osMutexRelease(m_radio_mutex);
     
     debug2("snd %p e: %d, %d", msg, err, osKernelGetTickCount());
+    if (COMMS_SUCCESS == err)
+    {
+        osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
+    }
     return err;
 }
 
@@ -1014,8 +1020,13 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 
     ll_hw_write_tfifo(&buf[0], len);
     ll_hw_go();
-		
-		info1("rf : %d",osKernelGetTickCount());
+
+    uint32_t newmode = ll_hw_get_tr_mode();
+	info1("rf : %d md:%d",osKernelGetTickCount(), (int)newmode);
+    if (LL_HW_MODE_STX != newmode)
+    {
+        err1("mode: %d != %d", (int)newmode, (int)LL_HW_MODE_STX);
+    }
     
     tx_timestamps[RF_TX_DONE] = radio_timestamp();
     
@@ -1155,12 +1166,12 @@ static void signal_send_done (comms_error_t err)
     {
         comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        //_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
+        _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
     if (qtime > 15)
     {
-        warn3("slow tx %d", qtime);
+        //warn3("slow tx %d", qtime);
     }
     
     // logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
@@ -1172,8 +1183,8 @@ static void signal_send_done (comms_error_t err)
     //assert(NULL != send_done);
 
     //info1("snt");
-    debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
-    debug2("snt: %p %u", msgp, osKernelGetTickCount());
+    //debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
+    logger(qtime > 15 ? LOG_WARN1: LOG_INFO1, "snt: %p %u ts=%02u", msgp, osKernelGetTickCount(), qtime);
 
     // check how much hw_stop() take time
     if (m_hw_stop_end != m_hw_stop_start)
