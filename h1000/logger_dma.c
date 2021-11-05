@@ -13,12 +13,6 @@
 #include "string.h"
 
 
-
-#include "loglevels.h"
-#define __MODUUL__ "dma"
-#define __LOG_LEVEL__ ( LOG_LEVEL_dma & 0xFFFF )
-#include "log.h"
-
 #define UART_0_BASE 0x40004000
 #define LOGGER_DMA_BUF_SIZE 512
 #define LOGGER_LDMA_MAX_TRANSFER 512
@@ -43,22 +37,21 @@ static uint16_t m_buf_pos = 0;
 static bool m_buf_full = false;
 static osThreadId_t m_id = 0; 
 static osMutexId_t m_log_mutex;
-static bool m_ldma_idle;
-static bool m_uart_active;
 static osTimerId_t m_fbtimer;
+
 
 void dma_callback(DMA_CH_t chn)
 {
-		osTimerStop(m_fbtimer);
-		osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_DONE);
+	osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_DONE);
 }
+
 
 extern void dbg_printf(const char *format, ...);
 void fallback_timer_cb(void *arg)
 {
-	 hal_dma_stop_channel(DMA_CH_0);
-	 dbg_printf(" DMA Logger failed ");
-	 osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_FAIL);
+	hal_dma_stop_channel(DMA_CH_0);
+	dbg_printf(" DMA Logger failed %d/%d/%d", (int)m_buf_start, (int)m_buf_end, (int)m_buf_pos);
+	osThreadFlagsSet(m_id, LOGGER_THREAD_FLAG_LDMA_FAIL);
 }
 
 
@@ -86,7 +79,6 @@ static bool try_dma_start()
 	
 	if(length > 0)
 	{
-		
 		m_cfg.transf_size = length;
 				
 		m_cfg.sinc = DMA_INC_INC;
@@ -127,6 +119,7 @@ static void ldma_thread (void* argument)
 
 		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE)
 		{
+			osTimerStop(m_fbtimer);
 			busy = false;
 			m_buf_full = false;
 			m_buf_start = m_buf_pos;
@@ -207,20 +200,22 @@ int logger_dma (const char *ptr, int len)
 
 bool logger_dma_init()
 {
-		bool ret = true;
-		ret = hal_dma_init();
-		const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 1024};
-		m_log_mutex = osMutexNew(NULL);
-		m_fbtimer = osTimerNew(fallback_timer_cb, osTimerOnce, NULL, NULL);
+	bool ret = true;
+	ret = hal_dma_init();
+	const osThreadAttr_t ldma_thread_attr = { .name = "dma", .stack_size = 1024, .priority = osPriorityLow };
 
-		HAL_DMA_t ch_cfg;
-		ch_cfg.dma_channel = DMA_CH_0;
-		ch_cfg.evt_handler = &dma_callback;
-		ret &= hal_dma_init_channel(ch_cfg);
-	
-		ret &= hal_dma_stop_channel(DMA_CH_0);
-		
-		m_id = osThreadNew(ldma_thread, NULL, &ldma_thread_attr);
-		
-		return ret;
+	m_log_mutex = osMutexNew(NULL);
+	m_fbtimer = osTimerNew(fallback_timer_cb, osTimerOnce, NULL, NULL);
+
+	HAL_DMA_t ch_cfg;
+	ch_cfg.dma_channel = DMA_CH_0;
+	ch_cfg.evt_handler = &dma_callback;
+
+	ret &= hal_dma_init_channel(ch_cfg);
+
+	ret &= hal_dma_stop_channel(DMA_CH_0);
+
+	m_id = osThreadNew(ldma_thread, NULL, &ldma_thread_attr);
+
+	return ret;
 }
