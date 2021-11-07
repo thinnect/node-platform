@@ -86,4 +86,9 @@ void PLATFORM_ClearGpioPin(uint8_t pin_nr);
  */
 void PLATFORM_ToggleGpioPin(uint8_t pin_nr);
 
+/**
+ * Perform a hard-reset when possible, a soft-reset when not.
+ */
+void PLATFORM_HardReset();
+
 #endif//_PLATFORM_H_

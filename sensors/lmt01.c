@@ -14,15 +14,26 @@
 #include "em_timer.h"
 #include "em_acmp.h"
 #include "em_prs.h"
+#include "platform_io.h"
 
 #ifdef _SILICON_LABS_32B_SERIES_2
+
+#ifndef ACMP_TRESHOLD
+#define ACMP_TRESHOLD acmpInputVREFDIV1V25
+#endif//ACMP_TRESHOLD
+#ifndef LMT01_ONESHOT_TIMER_PORT
+#define LMT01_ONESHOT_TIMER_PORT A
+#endif//LMT01_ONESHOT_TIMER_PORT
+#ifndef LMT01_ONESHOT_TIMER_PIN
+#define LMT01_ONESHOT_TIMER_PIN 6
+#endif//LMT01_ONESHOT_TIMER_PIN
 
 #define ___LMT01_STRINGIFY_PRE2(__p1, __p2)             __p1 ## __p2
 #define ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3)       __p1 ## __p2 ## __p3
 #define ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4) __p1 ## __p2 ## __p3 ## __p4
-#define ___LMT01_STRINGIFY2(__p1, __p2)                 ___LMT01_STRINGIFY_PRE2(__p1, __p2) 
-#define ___LMT01_STRINGIFY3(__p1, __p2, __p3)           ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3) 
-#define ___LMT01_STRINGIFY4(__p1, __p2, __p3, __p4)     ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4) 
+#define ___LMT01_STRINGIFY2(__p1, __p2)                 ___LMT01_STRINGIFY_PRE2(__p1, __p2)
+#define ___LMT01_STRINGIFY3(__p1, __p2, __p3)           ___LMT01_STRINGIFY_PRE3(__p1, __p2, __p3)
+#define ___LMT01_STRINGIFY4(__p1, __p2, __p3, __p4)     ___LMT01_STRINGIFY_PRE4(__p1, __p2, __p3, __p4)
 
 #define LMT01_ACMP_DEV                    (___LMT01_STRINGIFY2(ACMP, LMT01_ACMP_DEV_INDEX))
 #define LMT01_ACMP_CLOCK                  (___LMT01_STRINGIFY2(cmuClock_ACMP, LMT01_ACMP_DEV_INDEX))
@@ -96,7 +107,7 @@ static void lmt01_acmp_init()
 
 	ACMP_Init_TypeDef acmpInit = ACMP_INIT_DEFAULT;
 	ACMP_Init(LMT01_ACMP_DEV, &acmpInit);
-	ACMP_ChannelSet(LMT01_ACMP_DEV, acmpInputVREFDIV1V25, LMT01_ACMP_INPUT);
+	ACMP_ChannelSet(LMT01_ACMP_DEV, ACMP_TRESHOLD, LMT01_ACMP_INPUT);
 	if (LMT01_ACMP_INPUT_GPIO_PORT == gpioPortA)
 	{
 		if(LMT01_ACMP_INPUT_PIN & 1)
@@ -237,4 +248,3 @@ int32_t lmt01_read_temperature()
 	return -500;
 }
 #endif // _SILICON_LABS_32B_SERIES_2
-
