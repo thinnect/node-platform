@@ -13,7 +13,7 @@ int RETARGET_SerialInit(void)
 #endif
   .rts_pin = GPIO_DUMMY,
   .cts_pin = GPIO_DUMMY,
-  .baudrate = 115200,
+  .baudrate = 1000000,
   .use_fifo = TRUE,
   .hw_fwctrl = FALSE,
   .use_tx_buf = FALSE,
