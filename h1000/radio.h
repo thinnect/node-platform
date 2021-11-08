@@ -102,7 +102,6 @@ typedef struct
 	uint8_t channel;
 	uint8_t pan;
 	uint8_t status;
-	uint8_t mode;
 	uint8_t errno;
 	int8_t cca_treshhold;
 	osMessageQueueId_t recvQueue;
