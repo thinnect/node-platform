@@ -3,7 +3,7 @@
  *
  * Copyright Thinnect Inc. 2021
  * @license MIT
-*/ 
+*/
 
 #include "platform.h"
 #include "platform_io.h"
@@ -29,7 +29,8 @@
 bool buttonstate = 0;
 volatile uint8_t g_clk32K_config;
 
-static void hal_low_power_io_init(void)
+
+static void hal_low_power_io_init (void)
 {
    //========= pull all io to gnd by default
     ioinit_cfg_t ioInit[]= {
@@ -72,7 +73,7 @@ static void hal_low_power_io_init(void)
 }
 
 
-static void hal_init(void)
+static void hal_init (void)
 {
     hal_low_power_io_init();
 
@@ -85,7 +86,7 @@ static void hal_init(void)
     hal_pwrmgr_init();
     xflash_Ctx_t cfg =
     {
-			  .spif_ref_clk   =   SYS_CLK_DLL_64M,
+        .spif_ref_clk   =   SYS_CLK_DLL_64M,
         .rd_instr       =   XFRD_FCMD_READ_DUAL
     };
     hal_spif_cache_init(cfg);
@@ -93,27 +94,38 @@ static void hal_init(void)
 }
 
 
-
-void PLATFORM_Init()
+void PLATFORM_Init (void)
 {
 	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
-  g_clk32K_config = CLK_32K_XTAL;
+    g_clk32K_config = CLK_32K_XTAL;
 
 
-  drv_irq_init();
-  init_config();
-  hal_init();
-	
+    drv_irq_init();
+    init_config();
+    hal_init();
 }
-void PLATFORM_LedsSet(uint8_t leds)
+
+
+static uint8_t m_leds;
+
+
+void PLATFORM_LedsSet (uint8_t leds)
 {
 	//LOG("Count is %d \r\n", leds);
-	
+    m_leds = leds;
 	hal_gpio_write(LED_1, leds & LED_1_MASK);
 	hal_gpio_write(LED_2, leds & LED_2_MASK);
 	hal_gpio_write(LED_3, leds & LED_3_MASK);
 }
-bool PLATFORM_ButtonGet()
+
+
+uint8_t PLATFORM_LedsGet (void)
+{
+    return m_leds;
+}
+
+
+bool PLATFORM_ButtonGet (void)
 {
 	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
 	//WaitMs(200);
