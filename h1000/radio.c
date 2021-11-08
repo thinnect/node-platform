@@ -21,12 +21,12 @@
 
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
-//#define USE_ACK 1
+#define USE_ACK 1
 
-#define RADIO_MAX_SEND_TIME_MS 50UL
+#define RADIO_MAX_SEND_TIME_MS 10000UL
 #define RADIO_WAIT_FOR_ACK_MS 10UL // 864us
 #define RADIO_WAIT_FOR_ACK_SENT_MS 5
-#define RADIO_WAIT_HW_STOP_CNT 100
+#define RADIO_WAIT_HW_STOP_CNT 10000
 #define RADIO_BROADCAST_ADDR 0xFFFF
 
 // Thread flag definitions
@@ -87,7 +87,12 @@ struct radio_queue_element
 // -----------------------------------------------------------------------------
 
 extern void dbg_printf(const char *format, ...);
-
+volatile int g_rf_tx_line;
+volatile int g_rf_irq_line;
+volatile int g_rf_irq_flag;
+volatile int g_rf_irq_count;
+volatile int g_rf_stp_line;
+volatile int g_rf_stp_cnt;
 
 // TX queue with a linked list -------------------------------------------------
 static radio_queue_element_t radio_msg_queue_memory[7];
@@ -113,7 +118,7 @@ extern void hal_rom_boot_init(void);
 extern volatile uint32 llWaitingIrq;
 extern uint32_t ll_hw_get_tr_mode(void);
 
-static uint8_t m_rxBuf[127] = {0};
+static uint8_t m_rxBuf[127] = {0}; // Q: Not actually used anywhere???
 static uint16_t volatile m_irq_flag = 0;
 static uint32_t m_foot[2] = {0};
 static comms_layer_am_t m_radio_iface;
@@ -186,6 +191,8 @@ static uint8_t ack_seq = 0;
 static uint32_t max_fine_time = 0;
 static uint32_t max_carr_cnt;
 
+static bool m_stopping_hw;
+
 // Packets actually transmitted (energy for TX spent)
 static uint32_t m_transmitted_packets;
 
@@ -227,42 +234,121 @@ static void zb_hw_go (void)
 #endif
 }
 
+
+void busywait(uint32_t fine) {
+    uint32_t start = read_current_fine_time();
+    while (read_current_fine_time() - start < fine);
+}
+
+void busywaitk(uint32_t ms) {
+    uint32_t start = osKernelGetTickCount();
+    while (osKernelGetTickCount() - start < ms);
+}
+
+void busywaitc(uint32_t cc) {
+    for(uint32_t i = 0; i < cc; i++)
+    {
+        if (i == cc) {
+            break;
+        }
+    }
+}
+
+
+void blinkdeath (void) {
+    for (;;)
+    {
+        gpio_write(P25,1);
+        gpio_write(P24,1);
+        gpio_write(P23,1);
+        uint32_t start = read_current_fine_time();
+        while (read_current_fine_time() - start < 100000);
+        gpio_write(P25,0);
+        gpio_write(P24,0);
+        gpio_write(P23,0);
+        start = read_current_fine_time();
+        while (read_current_fine_time() - start < 100000);
+    }
+}
+
+
 bool zb_hw_stop(void)
 {
-    uint32_t cnt = 0;
-	
-		gpio_write(P18,1);
-    
+    int32_t lock = osKernelLock();
+
     // for debugging only!
-    m_hw_stop_start = radio_timestamp();
-    
+    g_rf_stp_line = __LINE__;
+    uint32_t stop_start = radio_timestamp();
+    uint32_t stop_start_fine = read_current_fine_time();
+    m_hw_stop_start = stop_start;
+
+    HAL_ENTER_CRITICAL_SECTION();
+    if (m_stopping_hw)
+    {
+        dbg_printf("m_stopping_hw");
+        while(1);
+    }
+    m_stopping_hw = true;
+    g_rf_irq_count = 0;
+    HAL_EXIT_CRITICAL_SECTION();
+
+    g_rf_stp_line = __LINE__;
+    ll_hw_set_rx_timeout(33);  //will trigger ll_hw_irq=RTO
+    g_rf_stp_line = __LINE__;
+
     while (RFPHY_IDLE != m_config.mode)
-    {	
-        ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
-        WaitRTCCount(1);
-        cnt++;
-        if (cnt > RADIO_WAIT_HW_STOP_CNT)
+    {
+        g_rf_stp_line = __LINE__;
+        //ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
+        g_rf_stp_line = __LINE__;
+
+        //WaitRTCCount(1);
+        busywait(100);
+        //busywaitk(2);
+        //busywaitc(10000);
+
+        g_rf_stp_line = __LINE__;
+        g_rf_stp_cnt++;
+        if (read_current_fine_time() - stop_start_fine > 10000000)
         {
+            g_rf_stp_line = __LINE__;
+            HAL_ENTER_CRITICAL_SECTION();
+            dbg_printf("TIMEOUT\n");
+            dbg_printf("L T:%d I:%d C=%d F=%X\r\n", g_rf_tx_line, g_rf_irq_line, g_rf_irq_count, g_rf_irq_flag);
+            dbg_printf("L S:%d C=%d\r\n", g_rf_stp_line, g_rf_stp_cnt);
+            dbg_printf("mode: %d\n", (int)(m_config.mode));
+            blinkdeath();
+            while(1);
+#if 0
             if (RFPHY_IDLE == m_config.mode)
             {
                 // for debugging only!
+                g_rf_stp_line = __LINE__;
                 m_hw_stop_end = radio_timestamp();
-								gpio_write(P18,0);
+                gpio_write(P18,0);
                 return true;
             }
             else
             {
                 // for debugging only!
                 m_hw_stop_end = radio_timestamp();
+                g_rf_stp_line = __LINE__;
                 err1("!hwstop mode:%d", m_config.mode);
-								gpio_write(P18,0);
+                gpio_write(P18,0);
                 return false;
             }
+#endif
         }
     };
     // for debugging only!
     m_hw_stop_end = radio_timestamp();
-		gpio_write(P18,0);
+    m_stopping_hw = false;
+    gpio_write(P18,0);
+
+    osKernelRestoreLock(lock);
+
+    debug1("stpt %d / %d", (int)(m_hw_stop_end - m_hw_stop_start), (int)(read_current_fine_time() - stop_start_fine));
+
     return true;
 }
 
@@ -307,7 +393,7 @@ static void zb_set_channel (uint8_t chn)
     {
         PHY_REG_WT(0x400300B4, (g_rfPhyFreqOffSet << 16) + (g_rfPhyFreqOffSet << 8) + rfChnIdx);
     }
-    else 
+    else
     {
         PHY_REG_WT(0x400300B4, ((255 + g_rfPhyFreqOffSet) << 16) + ((255 + g_rfPhyFreqOffSet) << 8) + (rfChnIdx - 1) );
     }
@@ -377,11 +463,11 @@ void rf_setRxMode (uint16_t timeout)
 {
 	  //dbg_printf("I|radio:379|Inside %s \n",__FUNCTION__);
     uint8_t cnt = 0;
-    
+
     if (m_config.mode == RFPHY_RX_ONLY || m_config.mode == RFPHY_TX_RXACK)
     {
         return;
-    } 
+    }
     else if (m_config.mode == RFPHY_TX_ONLY)
     {
         // if in tx state, abort the tx first
@@ -393,7 +479,7 @@ void rf_setRxMode (uint16_t timeout)
     ll_hw_rst_tfifo();
     ll_hw_go();
 }
-
+#if 0
 phy_sts_t rf_performCCA (void)
 {
     uint8_t rssi_peak = 150;
@@ -438,7 +524,7 @@ phy_sts_t rf_performCCA (void)
         return PHY_CCA_IDLE;
     }
 }
-
+#endif
 phy_sts_t checkEther (void)
 {
     return PHY_CCA_IDLE;
@@ -458,12 +544,12 @@ phy_sts_t checkEther (void)
 		gpio_write(P1,1);
     // Set Rx mode when needed
     rf_setRxMode(MAX_RX_TIMEOUT);
-        
+
     int32_t lock = osKernelLock();
     volatile uint32_t start_time = read_current_fine_time();
     volatile uint32_t cur_time;
     volatile uint32_t elapsed_time = 0;
-		
+
     while(elapsed_time < 128)
     {
         carr += rf_carriersense();
@@ -490,7 +576,7 @@ phy_sts_t checkEther (void)
     max_carr_cnt = carr_cnt;
 
     tx_timestamps[STOP_CHECK_ETHER] = radio_timestamp();
-    
+
     carr_peak = carr / carr_cnt;
     if (carr_peak < m_config.cca_treshhold)
     {
@@ -507,6 +593,8 @@ phy_sts_t checkEther (void)
 
 void RFPHY_IRQHandler (void)
 {
+    g_rf_irq_line = __LINE__;
+    g_rf_irq_count++;
     uint8_t mode;
     uint32_t T2;
     uint32_t delay;
@@ -516,19 +604,34 @@ void RFPHY_IRQHandler (void)
 
     data_pckt_t packet = {0};
     uint8_t buffer[140] = {0};
+    g_rf_irq_line = __LINE__;
     uint32_t rts = radio_timestamp();
+    g_rf_irq_line = __LINE__;
 
     uint32_t ISR_entry_time = read_current_fine_time();
+    g_rf_irq_line = __LINE__;
 
     m_irq_flag = ll_hw_get_irq_status();
-        
-    m_config.mode = RFPHY_IDLE;
-		
+    g_rf_irq_flag = m_irq_flag;
+    g_rf_irq_line = __LINE__;
+
+    gpio_write(P23, 1);
 
     if (!(m_irq_flag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
+        if (m_stopping_hw)
+        {
+            HAL_ENTER_CRITICAL_SECTION();
+            dbg_printf("MH?\n");
+            while(1);
+            // maybe something interesting happens here?
+        }
         //debug1("Mode is not done");
+        g_rf_irq_line = __LINE__;
         ll_hw_clr_irq();
+        g_rf_irq_line = __LINE__;
+        gpio_write(P23, 0);
+        g_rf_irq_line = __LINE__;
         return;
     }
     // TODO: should we use it instead of osDelay???
@@ -539,12 +642,14 @@ void RFPHY_IRQHandler (void)
 //        llWaitingIrq = false;
 //        return;
 //    }
-		
-		gpio_write(P20, 1);
-    
+    g_rf_irq_line = __LINE__;
     HAL_ENTER_CRITICAL_SECTION();
+    g_rf_irq_line = __LINE__;
+    m_config.mode = RFPHY_IDLE;
+    g_rf_irq_line = __LINE__;
 
     mode = ll_hw_get_tr_mode();
+    g_rf_irq_line = __LINE__;
 
     // ===================   mode TRX process 1
     // Tx, option: No Ack Need
@@ -552,41 +657,44 @@ void RFPHY_IRQHandler (void)
     if (m_irq_flag & LIRQ_TD)
     {
 #ifdef USE_ACK
+        g_rf_irq_line = __LINE__;
         if (sending_ack)
         {
             sending_ack = false;
-					//dbg_printf("I|radio:557| Ack sent flag\n");
+            //dbg_printf("I|radio:557| Ack sent flag\n");
             rx_timestamps[SEND_DONE_ACK] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
-                    
-        }        
+
+        }
         else if (!radio_tx_wait_ack)
         {
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
-						//dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
+            //dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
-						
-                    
         }
         else if (radio_tx_wait_ack)
         {
-						//dbg_printf("I|radio:557|Starting ack tmr\n");
+            //dbg_printf("I|radio:557|Starting ack tmr\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_STRT_ACK_TIM);
         }
 #else
+        g_rf_irq_line = __LINE__;
         // do not use ACK!
         tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 #endif
         // enable Rx again if Tx mode is not activated
-        if (m_config.mode == RFPHY_IDLE)
+        g_rf_irq_line = __LINE__;
+        if ( ! m_stopping_hw)
         {
             rf_setRxMode(MAX_RX_TIMEOUT);
         }
+        g_rf_irq_line = __LINE__;
     }
-        // Rx mode
+    // Rx mode
     else if ((mode == LL_HW_MODE_SRX || mode == LL_HW_MODE_TRX))
     {
+        g_rf_irq_line = __LINE__;
         uint8_t  packet_len = 0;
         uint16_t pktLen = 0;
 
@@ -594,29 +702,38 @@ void RFPHY_IRQHandler (void)
         // read packet
         if (m_irq_flag & LIRQ_COK)
         {
-            memset((void*)&rx_timestamps[0], 0x00, sizeof(rx_timestamps));
-            rx_timestamps[RX_IRQ_START] = radio_timestamp();
-            // TODO: check packet_len value!
-            packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
-            rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
-                    
+            if ( ! m_stopping_hw)
+            {
+                memset((void*)&rx_timestamps[0], 0x00, sizeof(rx_timestamps));
+                rx_timestamps[RX_IRQ_START] = radio_timestamp();
+                // TODO: check packet_len value!
+                packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
 
+                rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
+            }
         }
         else if (m_irq_flag & LIRQ_CERR)
         {
             pktLen = 0;
-            rf_setRxMode(MAX_RX_TIMEOUT); //miks?
+            if ( ! m_stopping_hw)
+            {
+                rf_setRxMode(MAX_RX_TIMEOUT); //miks?
+            }
             osThreadFlagsSet(m_config.threadid, RDFLG_CRC_ERROR);
         }
 
         //check Tx option for ack tx the payload and MAC address
-        if (pktLen)
+        if (m_stopping_hw)
+        {
+            // ignore incoming packets when trying to stop
+        }
+        else if (pktLen)
         {
             // TODO: get rid of copy!
             memcpy(&packet.buffer[0], &buffer[0], 140);
             // do the filtering
             mac_frame_t* frame = (mac_frame_t*)&packet.buffer[1];
-            
+
             // do not use ACK!
             uint16_t dest1 = ((uint16_t)packet.buffer[6] << 0) | ((uint16_t)packet.buffer[7] << 8);
 
@@ -633,11 +750,11 @@ void RFPHY_IRQHandler (void)
             // Handle ACK request with highest priority
             if ((frame->frame_control[0] & MAC_FCF_ACK_REQ_BIT) && (dest1 == m_config.nodeaddr))
             {
-                // info1("DEST: %x NODE: %x",dest1, m_config.nodeaddr); 
+                // info1("DEST: %x NODE: %x",dest1, m_config.nodeaddr);
                 // uint8_t seed[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
                 //uint8_t crcCode[2] = {0xff, 0xff};
                 uint8_t ackTxBuf[10];
-                
+
                 sending_ack = true;
                 ack_seq = packet.buffer[3]; // ??? FOR SURE THIS GONNA BRING PROBLEMS LATER ON
                 // calc and fill ack packet first
@@ -650,9 +767,9 @@ void RFPHY_IRQHandler (void)
                 // {
                 //     ackTxBuf[1] |= 0x10;
                 // }
-                
+
                 // send ack response
-                zb_hw_set_stx();             // set LL HW as single Tx mode  
+                zb_hw_set_stx();             // set LL HW as single Tx mode
                 // calculate the delay
                 T2 = read_current_fine_time();
 
@@ -662,27 +779,33 @@ void RFPHY_IRQHandler (void)
                 // consider rx_done to ISR time, SW delay after read_current_fine_time(), func read_current_fine_time() delay ...
                 delay = 118 - delay - SCAN_RSP_DELAY_VAL;  // IFS = 150us, Tx tail -> Rx done time: about 32us
 
-                ll_hw_set_trx_settle(10, //LL_HW_BB_DELAY_VAL, //delay,             // set BB delay, about 80us in 16MHz HCLK                  
-                                     LL_HW_AFE_DELAY_VAL, 
-                                     LL_HW_PLL_DELAY_VAL);  //RxAFE,PLL    
+                ll_hw_set_trx_settle(10, //LL_HW_BB_DELAY_VAL, //delay,             // set BB delay, about 80us in 16MHz HCLK
+                                     LL_HW_AFE_DELAY_VAL,
+                                     LL_HW_PLL_DELAY_VAL);  //RxAFE,PLL
 
                 // reset Rx/Tx FIFO
                 ll_hw_rst_rfifo();
-                ll_hw_rst_tfifo(); 
+                ll_hw_rst_tfifo();
 
                 // TODO: Do we need this???
                 // zigbee_crc16_gen(ackTxBuf+1, 3, seed, crcCode);
                 // ackTxBuf[4] = crcCode[0];
                 // ackTxBuf[5] = crcCode[1];
-            
+
                 // ll_hw_write_tfifo(ackTxBuf, 6);//include the crc16
                 ll_hw_write_tfifo(ackTxBuf, 4); //no crc16
                 rx_timestamps[SEND_ACK] = radio_timestamp();
                 osThreadFlagsSet(m_config.threadid, RDFLG_ACK_START);
                 ll_hw_go();
                 //zb_hw_go();
+
+                g_rf_irq_line = __LINE__;
+                HAL_EXIT_CRITICAL_SECTION();
+                gpio_write(P23, 0);
+                g_rf_irq_line = __LINE__;
+                return;
             }
-#endif       
+#endif
             // Set timestamp
             // rxPkt->timestamp = ISR_entry_time;
             // rf_rxBuf = rf_rxBackupBuf;
@@ -693,18 +816,18 @@ void RFPHY_IRQHandler (void)
 
             // Set timestamp
             uint8_t len = packet.buffer[0];
-            
-            if (m_config.mode == RFPHY_IDLE)
+
+            if ( ! m_stopping_hw)
             {
                 rf_setRxMode(MAX_RX_TIMEOUT); //miks does not make any sense
             }
-                        
+
             // if not ack
             if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
             {
                 // TODO; use microseconds in the future
                 // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
-                
+                g_rf_irq_line = __LINE__;
                 rts = rts - 3; //airTimeUs;
                 // Replace used CRC with timestamp
                 packet.buffer[len - 1] = rts >> 24;
@@ -713,7 +836,7 @@ void RFPHY_IRQHandler (void)
                 packet.buffer[len + 2] = rts;
 
                 packet.rssi = -1 * zbRssi;
-                
+
                 // TODO: use linked list instead? it takes approx 300-400us to put msg in queue
                 int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
                 if(osOK != res)
@@ -728,30 +851,33 @@ void RFPHY_IRQHandler (void)
             }
         }
     }
-   
-    // post ISR process   
+
+    // post ISR process
+    g_rf_irq_line = __LINE__;
     ll_hw_clr_irq();
-    
+    g_rf_irq_line = __LINE__;
+
     HAL_EXIT_CRITICAL_SECTION();
-		
-		gpio_write(P20, 0);
+
+    gpio_write(P23, 0);
+    g_rf_irq_line = __LINE__;
 }
 
 static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* msg, comms_send_done_f* cb, void* user)
 {
     comms_error_t err = COMMS_FAIL;
-    
-    debug2("rsnd: %p %d", msg, osKernelGetTickCount());
+
+    debug2("rsnd: %p", msg);
 
     if (interface != (comms_layer_iface_t *)&m_radio_iface)
     {
         return (COMMS_EINVAL);
     }
-    
+
 	gpio_write(P7,1);
     memset((void*)&tx_timestamps[0], 0x00, sizeof(tx_timestamps));
     tx_timestamps[START_RADIO_SEND] = radio_timestamp();
-    
+
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
     if (ST_RUNNING != m_state)
@@ -794,11 +920,14 @@ static comms_error_t radio_send (comms_layer_iface_t* interface, comms_msg_t* ms
     }
 
     osMutexRelease(m_radio_mutex);
-    
-    debug2("snd %p e: %d, %d", msg, err, osKernelGetTickCount());
+
     if (COMMS_SUCCESS == err)
     {
         osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND);
+    }
+    else
+    {
+        err1("snd %p e: %d, %d", msg, err, osKernelGetTickCount());
     }
     return err;
 }
@@ -843,7 +972,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_ch
     }
 
     debug2("opst: %d", m_state);
-        
+
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
     if (ST_OFF == m_state)
@@ -863,7 +992,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* interface, comms_status_ch
     }
     // TODO: zb_hw_stop()?
     osMutexRelease(m_radio_mutex);
-        
+
     return err;
 }
 
@@ -874,13 +1003,13 @@ static comms_error_t radio_start (comms_layer_iface_t* interface, comms_status_c
     {
         return COMMS_EINVAL;
     }
-        
+
     debug2("startst: %d", m_state);
-        
+
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
-        
+
     //debug1("State of radio is %d",m_state);
-        
+
     if (ST_RUNNING == m_state)
     {
         err = COMMS_ALREADY;
@@ -896,9 +1025,9 @@ static comms_error_t radio_start (comms_layer_iface_t* interface, comms_status_c
         m_state_change_user = user;
         osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_START);
     }
-        
+
     osMutexRelease(m_radio_mutex);
-        
+
     return err;
 }
 
@@ -924,7 +1053,7 @@ static void radio_ack_send_timeout_cb (void*arg)
     debug2("ACK send timeout");
     //osThreadFlagsSet(m_config.threadid, RDFLG_ACK_SENT_TIMEOUT);
 }
-    
+
 static void stop_radio_now ()
 {
     // debug1("stop");
@@ -941,7 +1070,7 @@ static void stop_radio_now ()
         qe->next = radio_msg_queue_free;
         radio_msg_queue_free = qe;
     }
-        
+
     data_pckt_t packet = {0};
     // Discard any pending RX messages
     while (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0))
@@ -958,7 +1087,7 @@ static void stop_radio_now ()
     osMutexRelease(m_radio_mutex);
 
     //zb_hw_stop();
-        
+
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STOPPED, m_state_change_user);
 }
 
@@ -978,35 +1107,47 @@ static void start_radio_now ()
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
 }
 
+
 void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 {
     uint8_t cnt = 0;
-    
+
     // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     // uint8_t crcCode[2]={0xff,0xff};
-    
+
+    gpio_write(P24,1);
+
+    g_rf_tx_line = __LINE__;
 #ifdef LOG_MODE
     uint8_t mode;
     // check current radio mode
     mode = ll_hw_get_tr_mode();
+    g_rf_tx_line = __LINE__;
     debug1("m_cfg:%u mode:%u", m_config.mode, mode);
 #endif
 
     tx_timestamps[RF_TX] = radio_timestamp();
-    
+    g_rf_tx_line = __LINE__;
+
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
-    ll_hw_rst_tfifo(); 
+    g_rf_tx_line = __LINE__;
+    ll_hw_rst_tfifo();
+    g_rf_tx_line = __LINE__;
 
     if (m_config.mode != RFPHY_IDLE)
     {
+        g_rf_tx_line = __LINE__;
         zb_hw_stop();
+        g_rf_tx_line = __LINE__;
     }
-    
+    g_rf_tx_line = __LINE__;
     zb_hw_set_stx();
-        
+    g_rf_tx_line = __LINE__;
+
     if (evt_time != 0)
     {
+        g_rf_tx_line = __LINE__;
         uint32_t diff, ti;
         uint16_t count = len - 19;
         ti = radio_timestamp();
@@ -1017,27 +1158,35 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
         buf[15+count] = diff>>8;
         buf[16+count] = diff;
     }
-
+    g_rf_tx_line = __LINE__;
     ll_hw_write_tfifo(&buf[0], len);
+    g_rf_tx_line = __LINE__;
     ll_hw_go();
-
+    g_rf_tx_line = __LINE__;
     uint32_t newmode = ll_hw_get_tr_mode();
-	info1("rf : %d md:%d",osKernelGetTickCount(), (int)newmode);
+    g_rf_tx_line = __LINE__;
+	//info1("rf : %d md:%d",osKernelGetTickCount(), (int)newmode);
     if (LL_HW_MODE_STX != newmode)
     {
         err1("mode: %d != %d", (int)newmode, (int)LL_HW_MODE_STX);
     }
-    
-    tx_timestamps[RF_TX_DONE] = radio_timestamp();
-    
-    m_radio_send_timestamp = radio_timestamp();
-    transfer_pending = true;
-    osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 
+    tx_timestamps[RF_TX_DONE] = radio_timestamp();
+    g_rf_tx_line = __LINE__;
+    m_radio_send_timestamp = radio_timestamp();
+    g_rf_tx_line = __LINE__;
+    transfer_pending = true;
+    g_rf_tx_line = __LINE__;
+    osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+    g_rf_tx_line = __LINE__;
     if (needAck)
     {
+        g_rf_tx_line = __LINE__;
         osTimerStart(m_ack_timer, RADIO_WAIT_FOR_ACK_MS);
     }
+
+    g_rf_tx_line = 0;
+    gpio_write(P24,0);
 }
 
 static void radio_send_message (comms_msg_t * msg)
@@ -1048,9 +1197,9 @@ static void radio_send_message (comms_msg_t * msg)
     {
         sys_panic("snull");
     }
-    
+
     tx_timestamps[RADIO_SEND_MSG] = radio_timestamp();
-    
+
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
     //RAIL_Status_t rslt;
     uint16_t count, total;
@@ -1086,7 +1235,7 @@ static void radio_send_message (comms_msg_t * msg)
     radio_tx_wait_ack = false;
     buffer[1] = 0x41;
 #endif
-    
+
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
@@ -1097,6 +1246,7 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[9] = ((src >> 8) & 0xFF);
     buffer[10] = 0x3F;
     // AMID handled below
+    debug1("csnd %04X->%04X[%02X](%d)", (int)src, (int)dst, (int)amid, (int)count);
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
     //info1("tx: %02X", buffer[12]);
@@ -1107,8 +1257,7 @@ static void radio_send_message (comms_msg_t * msg)
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
     {
-        uint32_t diff, ti;
-        //debug1("evt time valid");
+        debug1("etv");
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
         buffer[12+count] = amid;
         evt_time = comms_get_event_time(iface, msg);
@@ -1121,12 +1270,12 @@ static void radio_send_message (comms_msg_t * msg)
     }
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
-    total = 1 + 11 + count + 2; // lenb, hdr, data, crc		
+    total = 1 + 11 + count + 2; // lenb, hdr, data, crc
 
     //ll_hw_write_tfifo(&buffer[0], total);
-    
+
     tx_timestamps[RADIO_SEND_MSG_PCKT_DONE] = radio_timestamp();
-        
+
     if (checkEther() == PHY_CCA_IDLE)
     {
         rf_tx(buffer, total, radio_tx_wait_ack, evt_time);
@@ -1136,7 +1285,8 @@ static void radio_send_message (comms_msg_t * msg)
         // ll_hw_go();
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
     }
-        
+    debug1("x");
+
 }
 
 static void signal_send_done (comms_error_t err)
@@ -1145,8 +1295,8 @@ static void signal_send_done (comms_error_t err)
     comms_msg_t * msgp;
     void * user;
     uint32_t qtime;
-		
-		gpio_write(P7, 0);
+
+	gpio_write(P7, 0);
     tx_timestamps[SIGNAL_SEND_DONE] = radio_timestamp();
 
     osTimerStop(m_send_timeout_timer);
@@ -1166,14 +1316,14 @@ static void signal_send_done (comms_error_t err)
     {
         comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
+        //_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
     if (qtime > 15)
     {
         //warn3("slow tx %d", qtime);
     }
-    
+
     // logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
     //       "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
     //        msgp, err,
@@ -1201,7 +1351,7 @@ static void signal_send_done (comms_error_t err)
     // phy_rf_rx();
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
-#ifdef  LOG_TX_TIMESTAMPS    
+#ifdef  LOG_TX_TIMESTAMPS
     for (uint8_t idx = 0; idx < TX_LAST_TIMESTAMP; ++idx)
     {
         debug1("ts[%d]=%u", idx, tx_timestamps[idx]);
@@ -1263,7 +1413,7 @@ static void handle_radio_tx (uint32_t flags)
             // logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
             //        comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
             //        comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
-            
+
             if (resend)
             {
                 osTimerStart(m_resend_timer, \
@@ -1321,7 +1471,11 @@ static void handle_radio_tx (uint32_t flags)
             uint32_t passed = radio_timestamp() - m_radio_send_timestamp;
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
-                err1("TIMEOUT\r\n");
+                err1("TIMEOUT");
+                osDelay(1000);
+                HAL_ENTER_CRITICAL_SECTION();
+                while(1);
+
                 transfer_pending = false;
                 signal_send_done(COMMS_ETIMEOUT);
 
@@ -1330,7 +1484,7 @@ static void handle_radio_tx (uint32_t flags)
             }
             else // Perhaps triggered because timer from previous send was not stopped in time
             {
-                warn1("restarting timeout with new value\r\n");
+                warn1("restarting timeout with new value");
                 osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS - passed);
             }
         }
@@ -1376,7 +1530,7 @@ static void handle_radio_rx ()
                 }
                 amid = packet.buffer[(len-6)];
                 plen = len - 18;
-                
+
                 //debug1("diff: %i, amid: %02x", diff, amid);
                 //comms_set_event_time_us((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
                 comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
@@ -1426,7 +1580,7 @@ static void handle_radio_rx ()
                 comms_deliver((comms_layer_t *)&m_radio_iface, &msg);
                 rx_timestamps[RX_PRC_END] = radio_timestamp();
 
-                #ifdef  LOG_RX_TIMESTAMPS    
+                #ifdef  LOG_RX_TIMESTAMPS
                   for (uint8_t idx = 0; idx < RX_LAST_TIMESTAMP; ++idx)
                   {
                     debug1("ts[%d]=%u", idx, rx_timestamps[idx]);
@@ -1440,7 +1594,7 @@ static void handle_radio_rx ()
 static void radio_send_next ()
 {
     comms_msg_t * msg = NULL;
-    
+
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
     if (NULL != radio_msg_queue_head)
@@ -1480,7 +1634,7 @@ static void handle_radio_events (uint32_t flags)
     {
          //debug1("Rx");
     }
-        
+
     if (flags & RDFLG_CRC_ERROR)
     {
         // warn1("CRC error");
@@ -1491,7 +1645,7 @@ static void handle_radio_events (uint32_t flags)
         debug2("ACK snt");
         osTimerStop(m_ack_timeout_timer);
     }
-    
+
     if (flags & RDFLG_ACK_START)
     {
         if (sending_ack)
@@ -1505,17 +1659,17 @@ static void handle_radio_events (uint32_t flags)
     {
         err1("Failed to put message in queue!");
     }
-    
+
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
     // {
     //     phy_rf_rx();
     // }
-        
+
 //    if (flags & RDFLG_RADIO_STRT_ACK_TIM)
 //    {
 //        osTimerStart(m_ack_timer, RADIO_WAIT_FOR_ACK_MS);
 //    }
-    
+
     // if (flags & RDFLG_RADIO_ACK)
     // {
     //     debug1("Sending ack");
@@ -1536,30 +1690,30 @@ static void radio_task (void* arg)
 
     for (;;)
     {
-				gpio_write(P26,0);
-        flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 20);
-				gpio_write(P26, 1);
-			
-			
-			if(osFlagsErrorTimeout == flags)
-			{
-					osDelay(1);
-					continue;
-			}
-			
-			info1("Flags %x, %d", flags, osKernelGetTickCount());
-			
+		gpio_write(P25,0);
+        flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, osWaitForever);
+		gpio_write(P25, 1);
+
+#if 0
+		if(osFlagsErrorTimeout == flags)
+		{
+			osDelay(1);
+			continue;
+		}
+#endif
+		//info1("Flags %x, %d", flags, osKernelGetTickCount());
+
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
         osMutexRelease(m_radio_mutex);
-         
+
         if (ST_STARTING == state)
         {
             //debug1("Starting radio now");
             start_radio_now();
             running = true;
         }
-        
+
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
@@ -1602,16 +1756,16 @@ static void radio_task (void* arg)
                 osThreadExit();
             }
         }
-        
+
         // toggle LED
         if (true == led_set)
         {
-            hal_gpio_write(GPIO_P25, 0);
+            //hal_gpio_write(GPIO_P25, 0);
             led_set = false;
         }
         else
         {
-            hal_gpio_write(GPIO_P25, 1);
+            //hal_gpio_write(GPIO_P25, 1);
             led_set = true;
         }
     }
@@ -1639,7 +1793,7 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
     JUMP_FUNCTION(V4_IRQ_HANDLER) = (uint32_t)&RFPHY_IRQHandler;
 
-    m_config.recvQueue = osMessageQueueNew(10, 142, NULL);
+    m_config.recvQueue = osMessageQueueNew(10, sizeof(data_pckt_t), NULL);
     m_config.radio = (comms_layer_t *)&m_radio_iface;
 
     if(NULL == m_config.recvQueue)
@@ -1647,13 +1801,14 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
         return NULL;
     }
 
-    const osThreadAttr_t main_thread_attr = 
+    const osThreadAttr_t radio_thread_attr =
     {
         .name = "radio",
-        .priority =  osPriorityHigh // osPriorityNormal osPriorityHigh osPriorityAboveNormal
+        .stack_size = 2048,
     };
+    //        .priority =  osPriorityAboveNormal // osPriorityNormal osPriorityHigh osPriorityAboveNormal
 
-    m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
+    m_config.threadid = osThreadNew(radio_task, NULL, &radio_thread_attr);
 
     if(NULL == m_config.threadid)
     {
