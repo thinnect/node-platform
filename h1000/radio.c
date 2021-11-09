@@ -1299,7 +1299,7 @@ static void signal_send_done (comms_error_t err)
     {
         comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
         //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
+        //_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
     //assert(NULL != send_done);
