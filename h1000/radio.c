@@ -427,6 +427,7 @@ void rf_setRxMode (uint16_t timeout)
     uint8_t cnt = 0;
 	  uint32_t mode = ll_hw_get_tr_mode();
     
+		if(m_hw_stopping) { return; }
 		
 		if(__get_IPSR() == 0U || __get_PRIMASK() == 0U)
 		{
@@ -531,13 +532,6 @@ void RFPHY_IRQHandler (void)
 		g_rf_irq_flag = m_irq_flag;
     g_rf_irq_count++;
         
-		
-		if(m_hw_stopping)
-		{
-			m_hw_stopping = false;
-			ll_hw_clr_irq();
-			return;
-		}
 
     if (!(m_irq_flag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
@@ -736,6 +730,12 @@ void RFPHY_IRQHandler (void)
     }
    
     // post ISR process   
+		
+		if(m_hw_stopping)
+		{
+			m_hw_stopping = false;
+		}
+		
     ll_hw_clr_irq();
     
     HAL_EXIT_CRITICAL_SECTION();
