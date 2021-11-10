@@ -571,11 +571,6 @@ void RFPHY_IRQHandler (void)
         tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 #endif
-        // enable Rx again if Tx mode is not activated
-        if (LL_HW_MODE_SRX == mode)
-        {
-            rf_setRxMode(MAX_RX_TIMEOUT);
-        }
     }
         // Rx mode
     else if ((mode == LL_HW_MODE_SRX || mode == LL_HW_MODE_TRX))
@@ -590,7 +585,7 @@ void RFPHY_IRQHandler (void)
             memset((void*)&rx_timestamps[0], 0x00, sizeof(rx_timestamps));
             rx_timestamps[RX_IRQ_START] = radio_timestamp();
             // TODO: check packet_len value!
-            packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
+            packet_len = ll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
             rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
                     
 
@@ -598,7 +593,6 @@ void RFPHY_IRQHandler (void)
         else if (m_irq_flag & LIRQ_CERR)
         {
             pktLen = 0;
-            rf_setRxMode(MAX_RX_TIMEOUT);
             osThreadFlagsSet(m_config.threadid, RDFLG_CRC_ERROR);
         }
 
@@ -638,18 +632,13 @@ void RFPHY_IRQHandler (void)
                 uint8_t ackTxBuf[10];
                 
                 sending_ack = true;
-                ack_seq = packet.buffer[3]; // ??? FOR SURE THIS GONNA BRING PROBLEMS LATER ON
+                ack_seq = packet.buffer[3]; 
                 // calc and fill ack packet first
                 ackTxBuf[0] = 0x05;
                 ackTxBuf[1] = 0x02;
                 ackTxBuf[2] = 0x00;
                 ackTxBuf[3] = ack_seq; // SN number
-                // TODO: Do we need this???
-                // if (isDataPending(&srcAddr))
-                // {
-                //     ackTxBuf[1] |= 0x10;
-                // }
-                
+							
                 // send ack response
                 zb_hw_set_stx();             // set LL HW as single Tx mode  
                 // calculate the delay
@@ -682,22 +671,9 @@ void RFPHY_IRQHandler (void)
                 //zb_hw_go();
             }
 #endif       
-            // Set timestamp
-            // rxPkt->timestamp = ISR_entry_time;
-            // rf_rxBuf = rf_rxBackupBuf;
-            // if (rf_rxCbFunc)
-            // {
-            //     rf_rxCbFunc(rxPkt);
-            // }
 
             // Set timestamp
             uint8_t len = packet.buffer[0];
-						
-						
-						if (LL_HW_MODE_SRX == mode)
-						{
-								rf_setRxMode(MAX_RX_TIMEOUT);
-						}
                         
             // if not ack
             if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
@@ -730,6 +706,11 @@ void RFPHY_IRQHandler (void)
     }
    
     // post ISR process   
+		
+		if (LL_HW_MODE_SRX == mode)
+		{
+				rf_setRxMode(MAX_RX_TIMEOUT);
+		}
 		
 		if(m_hw_stopping)
 		{
@@ -982,9 +963,6 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 {
     uint8_t cnt = 0;
     
-    // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-    // uint8_t crcCode[2]={0xff,0xff};
-    
 #ifdef LOG_MODE
     uint8_t mode;
     // check current radio mode
@@ -1047,11 +1025,9 @@ static void radio_send_message (comms_msg_t * msg)
     tx_timestamps[RADIO_SEND_MSG] = radio_timestamp();
     
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
-    //RAIL_Status_t rslt;
     uint16_t count, total;
     uint16_t src, dst;
     uint8_t amid;
-    //RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
 
     count = comms_get_payload_length(iface, msg);
     src = comms_am_get_source(iface, msg);
@@ -1094,10 +1070,6 @@ static void radio_send_message (comms_msg_t * msg)
     // AMID handled below
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
-    //info1("tx: %02X", buffer[12]);
-
-    //	zb_hw_set_trx(0);
-
     uint32_t evt_time = 0;
     // Pick correct AMID, add timestamp footer when needed
     if (comms_event_time_valid(iface, msg))
@@ -1117,8 +1089,6 @@ static void radio_send_message (comms_msg_t * msg)
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
     total = 1 + 11 + count + 2; // lenb, hdr, data, crc		
-
-    //ll_hw_write_tfifo(&buffer[0], total);
     
     tx_timestamps[RADIO_SEND_MSG_PCKT_DONE] = radio_timestamp();
         
@@ -1159,8 +1129,6 @@ static void signal_send_done (comms_error_t err)
     if (err == COMMS_SUCCESS)
     {
         comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        //comms_set_timestamp_us((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
-        //_comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
     }
 
     if (qtime > 15)
@@ -1168,31 +1136,9 @@ static void signal_send_done (comms_error_t err)
         warn3("slow tx %d", qtime);
     }
     
-    // logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
-    //       "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
-    //        msgp, err,
-    //        qtime,
-    //        m_rail_sent_timestamp - m_rail_send_timestamp);
-
-    //assert(NULL != send_done);
-
-    //info1("snt");
     debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
     debug2("snt: %p %u", msgp, osKernelGetTickCount());
-
-    // check how much hw_stop() take time
-    if (m_hw_stop_end != m_hw_stop_start)
-    {
-        if (m_hw_stop_end > m_hw_stop_start)
-        {
-            warn1("hwstop:%u", m_hw_stop_end - m_hw_stop_start);
-        }
-        else
-        {
-            warn1("hwstop:%u", m_hw_stop_start - m_hw_stop_end);
-        }
-    }
-    // phy_rf_rx();
+		
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
 #ifdef  LOG_TX_TIMESTAMPS    

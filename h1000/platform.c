@@ -124,13 +124,6 @@ static void hal_init(void)
     hal_gpio_init();
 }
 
-/*
-#define     HARDFAULT_HANDLER                    220
-#define     SVC_HANDLER                          221
-#define     PENDSV_HANDLER                       222
-#define     SYSTICK_HANDLER                      223
-*/
-
 void PLATFORM_Init()
 {
 	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
@@ -149,15 +142,9 @@ void PLATFORM_Init()
   init_config();
   hal_init();
 	
-	
-	hal_gpio_pin_init(P11, GPIO_INPUT);
-	hal_gpio_pin_init(P18, GPIO_INPUT);
-	hal_gpio_pin_init(P20, GPIO_INPUT);
-	
 }
 void PLATFORM_LedsSet(uint8_t leds)
 {
-	//LOG("Count is %d \r\n", leds);
 	
 	hal_gpio_write(LED_1, leds & LED_1_MASK);
 	hal_gpio_write(LED_2, leds & LED_2_MASK);
