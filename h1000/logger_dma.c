@@ -23,7 +23,7 @@ extern void dbg_printf (const char *format, ...); // The phyplussdk debug functi
 #endif//LOGGER_DMA_CHANNEL
 
 #ifndef LOGGER_DMA_BUF_SIZE
-#define LOGGER_DMA_BUF_SIZE 2048
+#define LOGGER_DMA_BUF_SIZE 1048
 #endif//LOGGER_DMA_BUF_SIZE
 
 #ifndef LOGGER_LDMA_MAX_TRANSFER

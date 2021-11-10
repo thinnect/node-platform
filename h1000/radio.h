@@ -64,14 +64,6 @@ typedef enum
 	SEND_FAIL
 } radio_errno_t;
 
-typedef enum
-{
-	RFPHY_IDLE = 0x0,
-	RFPHY_RX_ONLY,
-	RFPHY_TX_ONLY,
-	RFPHY_TX_RXACK
-} radio_operating_mode_t;
-
 typedef struct
 {
 	uint8_t frame_control[2];
@@ -101,9 +93,6 @@ typedef struct
 	uint16_t nodeaddr;
 	uint8_t channel;
 	uint8_t pan;
-	uint8_t status;
-	uint8_t mode;
-	uint8_t errno;
 	int8_t cca_treshhold;
 	osMessageQueueId_t recvQueue;
 	osThreadId_t threadid;

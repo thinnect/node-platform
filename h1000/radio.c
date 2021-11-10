@@ -107,6 +107,20 @@ extern void hal_rom_boot_init(void);
 extern volatile uint32 llWaitingIrq;
 extern uint32_t ll_hw_get_tr_mode(void);
 
+
+//debug stuff
+extern void dbg_printf(const char *format, ...);
+volatile int g_rf_tx_line;
+volatile int g_rf_irq_line;
+volatile int g_rf_irq_flag;
+volatile int g_rf_irq_plen;
+volatile int g_rf_irq_count;
+volatile int g_rf_stp_line;
+volatile int g_rf_stp_cnt;
+
+
+
+
 static uint8_t m_rxBuf[127] = {0};
 static uint16_t volatile m_irq_flag = 0;
 static uint32_t m_foot[2] = {0};
@@ -121,6 +135,8 @@ static volatile uint8_t tx_ack_sent;
 static uint32_t radio_timestamp ();
 static volatile uint32_t m_hw_stop_start;
 static volatile uint32_t m_hw_stop_end;
+
+static volatile bool m_hw_stopping;
 
 enum
 {
@@ -221,39 +237,86 @@ static void zb_hw_go (void)
 #endif
 }
 
-bool zb_hw_stop(void)
+static uint32_t fine_time_passed (uint32_t ts)
 {
-    uint32_t cnt = 0;
-    
-    // for debugging only!
-    m_hw_stop_start = radio_timestamp();
-    
-    while (RFPHY_IDLE != m_config.mode)
-    {	
-        ll_hw_set_rx_timeout(5);  //will trigger ll_hw_irq=RTO
-        WaitRTCCount(1);
-        cnt++;
-        if (cnt > RADIO_WAIT_HW_STOP_CNT)
+    uint32_t now = read_current_fine_time();
+    if (ts > now) // The fine-time counter has wrapped its 22-bit TOP
+    {
+        now += 4194304; // Add 22-bits worth of time
+    }
+    return now - ts;
+}
+
+
+static void blinkdeath (void) // TODO: remove this
+{
+    for (;;)
+    {
+        gpio_write(P25,1);
+        gpio_write(P24,1);
+        gpio_write(P23,1);
+        uint32_t start = read_current_fine_time();
+        while (fine_time_passed(start) < 100000);
+        gpio_write(P25,0);
+        gpio_write(P24,0);
+        gpio_write(P23,0);
+        start = read_current_fine_time();
+        while (fine_time_passed(start) < 100000);
+    }
+}
+
+static bool zb_hw_stop (void)
+{
+    //int32_t lock = osKernelLock();
+    uint32_t stop_start_fine = read_current_fine_time();
+
+    HAL_ENTER_CRITICAL_SECTION();
+    if (m_hw_stopping)
+    {
+        dbg_printf("m_stopping_hw");
+        while(1);
+    }
+    m_hw_stopping = true;
+    g_rf_irq_count = 0;
+    g_rf_stp_cnt = 0;
+		uint32_t mode = ll_hw_get_tr_mode();
+    HAL_EXIT_CRITICAL_SECTION();
+
+    uint32_t stop_force_fine = read_current_fine_time();
+    ll_hw_set_rx_timeout(5); // will trigger ll_hw_irq=RTO
+
+    while (true == m_hw_stopping)
+    {
+        if (fine_time_passed(stop_force_fine) > 12000) // ~12ms
         {
-            if (RFPHY_IDLE == m_config.mode)
-            {
-                // for debugging only!
-                m_hw_stop_end = radio_timestamp();
-                return true;
-            }
-            else
-            {
-                // for debugging only!
-                m_hw_stop_end = radio_timestamp();
-                err1("!hwstop mode:%d", m_config.mode);
-                return false;
-            }
+            stop_force_fine = read_current_fine_time();
+            ll_hw_set_rx_timeout(5); // will trigger ll_hw_irq=RTO
+            g_rf_stp_cnt++;
+        }
+
+        //WaitRTCCount(1);
+
+        if (fine_time_passed(stop_start_fine) > 1000000) // 1 second
+        {
+            HAL_ENTER_CRITICAL_SECTION();
+            dbg_printf("TIMEOUT %u %u %u\n", (unsigned int)(read_current_fine_time()),
+                (unsigned int)stop_start_fine, (unsigned int)(read_current_fine_time() - stop_start_fine));
+						dbg_printf("L T:%d I:%d C=%d F=%X\r\n", g_rf_tx_line, g_rf_irq_line, g_rf_irq_count, g_rf_irq_flag);
+            dbg_printf("L S:%d C=%d\r\n", g_rf_stp_line, g_rf_stp_cnt);
+            dbg_printf("mode: %d\n", (int)(mode));
+            blinkdeath();
+            while(1);
         }
     };
-    // for debugging only!
-    m_hw_stop_end = radio_timestamp();
+
+    //osKernelRestoreLock(lock);
+
+    int stpt = fine_time_passed(stop_start_fine);
+   // logger(stpt > 1000 ? LOG_WARN1: LOG_DEBUG2, "stpt %d (%d)", stpt, g_rf_stp_cnt);
+
     return true;
 }
+
 
 static void zb_hw_timing (void)
 {
@@ -266,7 +329,6 @@ static void zb_hw_timing (void)
 
 static void zb_hw_set_srx (uint32_t rxTimeOutUs)
 {
-    m_config.mode = RFPHY_RX_ONLY;
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_srx();
     ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
@@ -274,7 +336,6 @@ static void zb_hw_set_srx (uint32_t rxTimeOutUs)
 
 static void zb_hw_set_stx (void)
 {
-    m_config.mode = RFPHY_TX_ONLY;
     ll_hw_set_stx();
     ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
 }
@@ -282,7 +343,6 @@ static void zb_hw_set_stx (void)
 
 static void zb_hw_set_trx (uint32_t rxTimeOutUs)
 {
-    m_config.mode = RFPHY_TX_RXACK;
     ll_hw_set_rx_timeout(rxTimeOutUs);
     ll_hw_set_trx();
     ll_hw_set_trx_settle(LL_HW_BB_DELAY_VAL, LL_HW_AFE_DELAY_VAL, LL_HW_PLL_DELAY_VAL);          //RxAFE,PLL
@@ -365,16 +425,21 @@ uint8_t rf_carriersense (void)
 void rf_setRxMode (uint16_t timeout)
 {
     uint8_t cnt = 0;
+	  uint32_t mode = ll_hw_get_tr_mode();
     
-    if (m_config.mode == RFPHY_RX_ONLY || m_config.mode == RFPHY_TX_RXACK)
-    {
-        return;
-    } 
-    else if (m_config.mode == RFPHY_TX_ONLY)
-    {
-        // if in tx state, abort the tx first
-        zb_hw_stop();
-    }
+		
+		if(__get_IPSR() == 0U || __get_PRIMASK() == 0U)
+		{
+			    if (LL_HW_MODE_SRX == mode || LL_HW_MODE_TRX == mode)
+					{
+								return;
+					} 
+					else if (LL_HW_MODE_STX == mode)
+					{
+						// if in tx state, abort the tx first
+						zb_hw_stop();
+					}
+		}
     zb_hw_set_srx(timeout);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
@@ -382,53 +447,11 @@ void rf_setRxMode (uint16_t timeout)
     ll_hw_go();
 }
 
-phy_sts_t rf_performCCA (void)
-{
-    uint8_t rssi_peak = 150;
-    uint32_t rssi_cur = 0;
-    uint32_t rssiCnt = 0;
-
-    // enter the rx status
-    rf_setRxMode(MAX_RX_TIMEOUT);
-
-    volatile uint32_t start_time = read_current_fine_time();
-    volatile uint32_t cur_time;
-    volatile uint32_t elapsed_time = 0;
-
-    while(elapsed_time < 128)
-    {
-        rssi_cur += rf_getRssi();
-        rssiCnt++;
-        cur_time = read_current_fine_time();
-        if (cur_time > start_time)
-        {
-            elapsed_time += cur_time - start_time;
-            start_time = cur_time;
-        }
-        else if (cur_time < start_time)
-        {
-            elapsed_time += start_time - cur_time;
-            start_time = cur_time;
-        }
-        else
-        {
-            // do nothing
-        }
-    }
-    rssi_peak = rssi_cur / rssiCnt;
-    //debug1("RSSI_peak %d\r\n",rssi_peak);
-    if (rssi_peak < m_config.cca_treshhold)
-    {
-        return PHY_CCA_BUSY;
-    }
-    else
-    {
-        return PHY_CCA_IDLE;
-    }
-}
-
 phy_sts_t checkEther (void)
 {
+		return PHY_CCA_IDLE;
+	
+	
     uint32_t carr_peak = 150;
     uint32_t carr = 0;
     uint32_t carr_cnt = 0;
@@ -504,8 +527,17 @@ void RFPHY_IRQHandler (void)
     uint32_t ISR_entry_time = read_current_fine_time();
 
     m_irq_flag = ll_hw_get_irq_status();
+		
+		g_rf_irq_flag = m_irq_flag;
+    g_rf_irq_count++;
         
-    m_config.mode = RFPHY_IDLE;
+		
+		if(m_hw_stopping)
+		{
+			m_hw_stopping = false;
+			ll_hw_clr_irq();
+			return;
+		}
 
     if (!(m_irq_flag & LIRQ_MD))          // only process IRQ of MODE DONE
     {
@@ -513,15 +545,6 @@ void RFPHY_IRQHandler (void)
         ll_hw_clr_irq();
         return;
     }
-    // TODO: should we use it instead of osDelay???
-//    if (0 == (m_irq_flag & LIRQ_RTO))
-//    {
-//        //debug1("RXTO");
-//        ll_hw_clr_irq();
-//        llWaitingIrq = false;
-//        return;
-//    }
-    
     HAL_ENTER_CRITICAL_SECTION();
 
     mode = ll_hw_get_tr_mode();
@@ -555,7 +578,7 @@ void RFPHY_IRQHandler (void)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
 #endif
         // enable Rx again if Tx mode is not activated
-        if (m_config.mode == RFPHY_IDLE)
+        if (LL_HW_MODE_SRX == mode)
         {
             rf_setRxMode(MAX_RX_TIMEOUT);
         }
@@ -675,11 +698,12 @@ void RFPHY_IRQHandler (void)
 
             // Set timestamp
             uint8_t len = packet.buffer[0];
-            
-            if (m_config.mode == RFPHY_IDLE)
-            {
-                rf_setRxMode(MAX_RX_TIMEOUT);
-            }
+						
+						
+						if (LL_HW_MODE_SRX == mode)
+						{
+								rf_setRxMode(MAX_RX_TIMEOUT);
+						}
                         
             // if not ack
             if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
@@ -973,13 +997,15 @@ void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
     ll_hw_rst_tfifo(); 
+	
+	
+		uint32_t mode = ll_hw_get_tr_mode();
 
-    if (m_config.mode != RFPHY_IDLE)
+    if (LL_HW_MODE_STX != mode)
     {
         zb_hw_stop();
+				zb_hw_set_stx();
     }
-    
-    zb_hw_set_stx();
         
     if (evt_time != 0)
     {
@@ -1516,21 +1542,6 @@ static void radio_task (void* arg)
             continue;
         }
     
-//    	while (osFlagsErrorTimeout == flags)
-//        {
-//            uint32_t wait = osWaitForever;
-//            if ((running) || (NULL != radio_msg_queue_head))
-//            {
-//                wait = 1;
-//            }
-//            flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, wait);
-//        }
-
-        // uint32_t flags = osThreadFlagsWait(RDFLGS_ALL, osFlagsWaitAny, 1);
-        // if (flags == osFlagsErrorTimeout)
-        // {
-        //     flags = 0;
-        // }
         while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
         state = m_state;
         osMutexRelease(m_radio_mutex);
@@ -1665,7 +1676,13 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     hal_rfphy_init();
     zb_set_channel(channel);
     zb_hw_timing ();
-    rf_setRxMode(MAX_RX_TIMEOUT);
+    //rf_setRxMode(MAX_RX_TIMEOUT);
+		zb_hw_set_srx(MAX_RX_TIMEOUT);
+    // reset Rx/Tx FIFO
+    ll_hw_rst_rfifo();
+    ll_hw_rst_tfifo();
+    ll_hw_go();
+		
 
     return &m_config;
 }
