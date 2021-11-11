@@ -1066,9 +1066,20 @@ static void signal_send_done (comms_error_t err)
         comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp()); // TODO: Crashes
     }
 
-    if (qtime > 15)
+    if (comms_is_ack_required((comms_layer_t *)&m_radio_iface, msgp)
+     &&( ! comms_ack_received((comms_layer_t *)&m_radio_iface, msgp)))
     {
-        warn3("slow tx %d", qtime);
+        warn1("snt(%d): %p ts=%02u noack %d/%d", (int)err, msgp, qtime,
+            (int)comms_get_retries_used((comms_layer_t *)&m_radio_iface, msgp),
+            (int)comms_get_retries((comms_layer_t *)&m_radio_iface, msgp));
+    }
+    else if (qtime > 15)
+    {
+        warn1("snt(%d): %p ts=%02u", (int)err, msgp, qtime);
+    }
+    else
+    {
+        info1("snt(%d): %p ts=%02u", (int)err, msgp, qtime);
     }
     
     debug2("elapsed:%u cnt:%u", max_fine_time, max_carr_cnt);
