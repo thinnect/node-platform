@@ -400,18 +400,13 @@ static void rf_setRxMode (uint16_t timeout)
     
 		if(m_hw_stopping) { return; }
 		
+		if (LL_HW_MODE_SRX == mode) { return; }
+		
 		if(__get_IPSR() == 0U || __get_PRIMASK() == 0U)
 		{
-			    if (LL_HW_MODE_SRX == mode || LL_HW_MODE_TRX == mode)
-					{
-								return;
-					} 
-					else if (LL_HW_MODE_STX == mode)
-					{
-						// if in tx state, abort the tx first
-						zb_hw_stop();
-					}
+						zb_hw_stop(); // does not matter which other mode it is in. since its not in irq and we want rx mode, we need to stop it and switch
 		}
+		
     zb_hw_set_srx(timeout);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
@@ -1419,7 +1414,8 @@ static void radio_task (void* arg)
         if (flags & RDFLG_RADIO_RESTART)
         {
            // debug1("restart");
-            zb_hw_stop();
+							debug1("Restart happened");
+            //zb_hw_stop();
 
             // If sending, cancel and notify user
             if (NULL != radio_msg_sending)
