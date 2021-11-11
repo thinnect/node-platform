@@ -324,7 +324,7 @@ static void zb_set_channel (uint8_t chn) // replace with rom set_channel ?
     ll_hw_ign_rfifo(LL_HW_IGN_CRC);
 }
 
-static uint8_t  zbll_hw_read_rfifo_zb (uint8_t* rxPkt, uint16_t* pktLen, uint32_t* pktFoot0, uint32_t* pktFoot1)
+static uint8_t zbll_hw_read_rfifo_zb (uint8_t* rxPkt, uint16_t* pktLen, uint32_t* pktFoot0, uint32_t* pktFoot1)
 {
     int rdPtr, wrPtr, rdDepth, blen, wlen;
     uint32_t* p_rxPkt=(uint32_t*)rxPkt;
@@ -336,6 +336,16 @@ static uint8_t  zbll_hw_read_rfifo_zb (uint8_t* rxPkt, uint16_t* pktLen, uint32_
         *p_rxPkt++ = *(volatile uint32_t*)(LL_HW_RFIFO);
 
         blen = rxPkt[0];           //get the byte length for header
+
+        if (blen >= 140) // This is bad, if we don't break out here, the next loop will trash a lot of stuff
+        {
+            rxPkt[0]  = 0;
+            *pktFoot0 = 0;
+            *pktFoot1 = 0;
+            *pktLen = blen + 1;
+            return 0;
+        }
+
         wlen = 1 + ((blen) >> 2);  //blen included the 2byte crc
 
         while (p_rxPkt < (uint32_t *)rxPkt + wlen)
@@ -547,7 +557,7 @@ void RFPHY_IRQHandler (void)
             memset((void*)&rx_timestamps[0], 0x00, sizeof(rx_timestamps));
             rx_timestamps[RX_IRQ_START] = radio_timestamp();
             // TODO: check packet_len value!
-            packet_len = ll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
+            packet_len = zbll_hw_read_rfifo_zb(&buffer[0], &pktLen, &m_foot[0], &m_foot[1]);
             rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
                     
 
@@ -650,10 +660,8 @@ void RFPHY_IRQHandler (void)
    
     // post ISR process   
 		
-		if (LL_HW_MODE_SRX == mode)
-		{
-				rf_setRxMode(MAX_RX_TIMEOUT);
-		}
+
+		rf_setRxMode(MAX_RX_TIMEOUT);
 		
 		if(m_hw_stopping)
 		{
