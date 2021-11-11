@@ -118,10 +118,6 @@ volatile int g_rf_irq_count;
 volatile int g_rf_stp_line;
 volatile int g_rf_stp_cnt;
 
-
-
-
-static uint8_t m_rxBuf[127] = {0};
 static uint16_t volatile m_irq_flag = 0;
 static uint32_t m_foot[2] = {0};
 static comms_layer_am_t m_radio_iface;
@@ -1496,13 +1492,14 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
         return NULL;
     }
 
-    const osThreadAttr_t main_thread_attr = 
+    const osThreadAttr_t radio_thread_attr = 
     {
         .name = "radio",
-        .priority =  osPriorityHigh // osPriorityNormal osPriorityHigh osPriorityAboveNormal
+        .priority =  osPriorityHigh, // osPriorityNormal osPriorityHigh osPriorityAboveNormal
+				.stack_size = 1536
     };
 
-    m_config.threadid = osThreadNew(radio_task, NULL, &main_thread_attr);
+    m_config.threadid = osThreadNew(radio_task, NULL, &radio_thread_attr);
 
     if(NULL == m_config.threadid)
     {
@@ -1527,12 +1524,9 @@ radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 
     m_state = ST_OFF;
 
-    memset(&m_rxBuf[0], 0x0, 127);
-
     hal_rfphy_init();
     zb_set_channel(channel);
     zb_hw_timing ();
-    //rf_setRxMode(MAX_RX_TIMEOUT);
 		zb_hw_set_srx(MAX_RX_TIMEOUT);
     // reset Rx/Tx FIFO
     ll_hw_rst_rfifo();
