@@ -129,9 +129,6 @@ static volatile uint8_t rx_fail;
 static volatile uint8_t tx_ack_sent;
 
 static uint32_t radio_timestamp ();
-static volatile uint32_t m_hw_stop_start;
-static volatile uint32_t m_hw_stop_end;
-
 static volatile bool m_hw_stopping;
 
 enum
@@ -185,7 +182,6 @@ static uint8_t m_radio_channel_current;
 
 static uint32_t m_stop_timestamp;
 
-static bool transfer_pending = false;
 static bool sending_ack = false;
 static uint8_t ack_seq = 0;
 
@@ -936,7 +932,6 @@ static void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
     tx_timestamps[RF_TX_DONE] = radio_timestamp();
     
     m_radio_send_timestamp = radio_timestamp();
-    transfer_pending = true;
     osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 
     if (needAck)
@@ -1147,8 +1142,6 @@ static void handle_radio_tx (uint32_t flags)
         else if (flags & RDFLG_RAIL_SEND_BUSY)
         {
             bool resend = false;
-            transfer_pending = false;
-
             //osTimerStop(m_send_timeout_timer);
 
             if (m_csma_retries < 7)
@@ -1179,7 +1172,6 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has failed in some generic way ------------------------------
         else if (flags & RDFLG_RADIO_SEND_FAIL)
         {
-            transfer_pending = false;
             signal_send_done(COMMS_FAIL);
         }
         // Sending has not completed in a reasonable amount of time ------------
@@ -1190,7 +1182,6 @@ static void handle_radio_tx (uint32_t flags)
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
                 err1("TIMEOUT\r\n");
-                transfer_pending = false;
                 signal_send_done(COMMS_ETIMEOUT);
 
                 // Presumably something is wrong with the radio
