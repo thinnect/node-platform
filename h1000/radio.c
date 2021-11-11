@@ -313,7 +313,14 @@ static bool zb_hw_stop (void)
     //osKernelRestoreLock(lock);
 
     int stpt = fine_time_passed(stop_start_fine);
-    logger(stpt > 1000 ? LOG_WARN1: LOG_DEBUG2, "stpt %d (%d)", stpt, g_rf_stp_cnt);
+    if (stpt > 1000)
+    {
+        warn1("stpt %d (%d)", stpt, g_rf_stp_cnt);
+    }
+    else
+    {
+        debug2("stpt %d (%d)", stpt, g_rf_stp_cnt);
+    }
 
     return true;
 }
@@ -657,7 +664,7 @@ void RFPHY_IRQHandler (void)
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
 
         }
-        else if (!radio_tx_wait_ack)
+        else if ( ! radio_tx_wait_ack)
         {
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
             //dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
@@ -1139,6 +1146,17 @@ static void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
     }
     zb_hw_set_stx();
 
+    if (needAck)
+    {
+        radio_tx_wait_ack = true;
+        buf[1] = 0x61;
+    }
+    else
+    {
+        radio_tx_wait_ack = false;
+        buf[1] = 0x41;
+    }
+
     if (evt_time != 0)
     {
         uint32_t diff, ti;
@@ -1175,11 +1193,9 @@ static void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
     gpio_write(P24,0);
 }
 
-static void radio_send_message (comms_msg_t * msg)
+static void radio_send_message (comms_msg_t * p_msg)
 {
-    __packed uint8_t buffer[160] = {0};
-
-    if (NULL == msg)
+    if (NULL == p_msg)
     {
         sys_panic("snull");
     }
@@ -1187,41 +1203,33 @@ static void radio_send_message (comms_msg_t * msg)
     tx_timestamps[RADIO_SEND_MSG] = radio_timestamp();
 
     comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
-    //RAIL_Status_t rslt;
-    uint16_t count, total;
-    uint16_t src, dst;
-    uint8_t amid;
-    //RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
 
-    count = comms_get_payload_length(iface, msg);
-    src = comms_am_get_source(iface, msg);
+    uint16_t count = comms_get_payload_length(iface, p_msg);
+    uint16_t src = comms_am_get_source(iface, p_msg);
     if (src == 0)
     {
         src = m_config.nodeaddr;
     }
-    dst = comms_am_get_destination(iface, msg);
+    uint16_t dst = comms_am_get_destination(iface, p_msg);
     if (dst == 0)
     {
         warn1("dest not set");
     }
-    amid = comms_get_packet_type(iface, msg);
+    uint8_t amid = comms_get_packet_type(iface, p_msg);
+
 #ifdef USE_ACK
-    // is ack and not broadcast
-    if (comms_is_ack_required(iface, msg) && (dst != 0xFFFF))
+    bool need_ack = comms_is_ack_required(iface, p_msg);
+    if ((0xFFFF == dst) && need_ack)
     {
-        radio_tx_wait_ack = true;
-        buffer[1] = 0x61;
-    }
-    else
-    {
-        radio_tx_wait_ack = false;
-        buffer[1] = 0x41;
+        //warn1("bcast ack"); // Somebody is asking for an ack on a broadcast
+        need_ack = false;
+        comms_set_ack_required(iface, p_msg, false);
     }
 #else
-    radio_tx_wait_ack = false;
-    buffer[1] = 0x41;
+    bool need_ack = false;
 #endif
 
+    __packed uint8_t buffer[160] = {0};  // FIXME: __packed does not seem necessary here?
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
     buffer[4] = ((m_config.pan >> 0) & (0xFF));
@@ -1232,20 +1240,16 @@ static void radio_send_message (comms_msg_t * msg)
     buffer[9] = ((src >> 8) & 0xFF);
     buffer[10] = 0x3F;
     // AMID handled below
-    debug1("csnd %04X->%04X[%02X](%d) a:%d", (int)src, (int)dst, (int)amid, (int)count, (int)radio_tx_wait_ack);
-    memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
-
-    //info1("tx: %02X", buffer[12]);
-
-    //	zb_hw_set_trx(0);
+    debug1("csnd %04X->%04X[%02X](%d) a:%d", (int)src, (int)dst, (int)amid, (int)count, (int)need_ack);
+    memcpy(&buffer[12], comms_get_payload(iface, p_msg, count), count);
 
     uint32_t evt_time = 0;
     // Pick correct AMID, add timestamp footer when needed
-    if (comms_event_time_valid(iface, msg))
+    if (comms_event_time_valid(iface, p_msg))
     {
         buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
         buffer[12+count] = amid;
-        evt_time = comms_get_event_time(iface, msg);
+        evt_time = comms_get_event_time(iface, p_msg);
         count += 5;
     }
     else
@@ -1255,15 +1259,13 @@ static void radio_send_message (comms_msg_t * msg)
     }
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
-    total = 1 + 11 + count + 2; // lenb, hdr, data, crc
-
-    //ll_hw_write_tfifo(&buffer[0], total);
+    uint16_t total = 1 + 11 + count + 2; // lenb, hdr, data, crc
 
     tx_timestamps[RADIO_SEND_MSG_PCKT_DONE] = radio_timestamp();
 
     if (checkEther() == PHY_CCA_IDLE)
     {
-        rf_tx(buffer, total, radio_tx_wait_ack, evt_time);
+        rf_tx(buffer, total, need_ack, evt_time);
     }
     else
     {
@@ -1271,7 +1273,6 @@ static void radio_send_message (comms_msg_t * msg)
         osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_BUSY);
     }
 }
-
 
 static void signal_send_done (comms_error_t err)
 {
@@ -1303,8 +1304,21 @@ static void signal_send_done (comms_error_t err)
     }
 
     //assert(NULL != send_done);
-
-    logger(qtime > 15 ? LOG_WARN1: LOG_INFO1, "snt: %p %u ts=%02u", msgp, osKernelGetTickCount(), qtime);
+    if (comms_is_ack_required((comms_layer_t *)&m_radio_iface, msgp)
+     &&( ! comms_ack_received((comms_layer_t *)&m_radio_iface, msgp)))
+    {
+        warn1("snt(%d): %p ts=%02u noack %d/%d", (int)err, msgp, qtime,
+            (int)comms_get_retries_used((comms_layer_t *)&m_radio_iface, msgp),
+            (int)comms_get_retries((comms_layer_t *)&m_radio_iface, msgp));
+    }
+    else if (qtime > 15)
+    {
+        warn1("snt(%d): %p ts=%02u", (int)err, msgp, qtime);
+    }
+    else
+    {
+        info1("snt(%d): %p ts=%02u", (int)err, msgp, qtime);
+    }
 
     send_done((comms_layer_t *)&m_radio_iface, msgp, err, user);
 
@@ -1366,14 +1380,14 @@ static void handle_radio_tx (uint32_t flags)
                 resend = true;
             }
 
-            // logger(resend?LOG_DEBUG1:LOG_WARN3, "rx ackTimeout (%"PRIu8"/%"PRIu8")",
-            //        comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
-            //        comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
+            logger(resend ? LOG_DEBUG1:LOG_WARN3, "ATO %d/%d",
+                   (int)comms_get_retries_used((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg),
+                   (int)comms_get_retries((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg));
 
             if (resend)
             {
-                osTimerStart(m_resend_timer, \
-                             comms_get_timeout((comms_layer_t *)&m_radio_iface, \
+                osTimerStart(m_resend_timer,
+                             comms_get_timeout((comms_layer_t *)&m_radio_iface,
                              radio_msg_sending->msg));
             }
             else
