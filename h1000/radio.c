@@ -400,8 +400,6 @@ static void rf_setRxMode (uint16_t timeout)
     
 		if(m_hw_stopping) { return; }
 		
-		if (LL_HW_MODE_SRX == mode) { return; }
-		
 		if(__get_IPSR() == 0U || __get_PRIMASK() == 0U)
 		{
 						zb_hw_stop(); // does not matter which other mode it is in. since its not in irq and we want rx mode, we need to stop it and switch
