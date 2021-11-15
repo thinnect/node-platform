@@ -58,7 +58,7 @@ bool buttonstate = 0;
 volatile uint8_t g_clk32K_config;
 
 
-static void hal_low_power_io_init(void)
+static void hal_low_power_io_init (void)
 {
    //========= pull all io to gnd by default
     ioinit_cfg_t ioInit[]= {
@@ -104,7 +104,7 @@ static void hal_low_power_io_init(void)
 }
 
 
-static void hal_init(void)
+static void hal_init (void)
 {
     hal_low_power_io_init();
 
@@ -124,7 +124,7 @@ static void hal_init(void)
     hal_gpio_init();
 }
 
-void PLATFORM_Init()
+void PLATFORM_Init (void)
 {
 	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
   g_clk32K_config = CLK_32K_XTAL;
@@ -150,7 +150,7 @@ void PLATFORM_LedsSet(uint8_t leds)
 	hal_gpio_write(LED_2, leds & LED_2_MASK);
 	hal_gpio_write(LED_3, leds & LED_3_MASK);
 }
-bool PLATFORM_ButtonGet()
+bool PLATFORM_ButtonGet (void)
 {
 	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
 	//WaitMs(200);
@@ -222,9 +222,9 @@ void dump_ldma_buf()
  * HardFault handler in C, with stack frame location and LR value
  * extracted from the assembly wrapper as input parameters
  */
-void hard_fault_handler_c(unsigned int * hardfault_args, unsigned lr_value)
+void hard_fault_handler_c (unsigned int * hardfault_args, unsigned lr_value)
 {
-	  RETARGET_SerialInit();
+	    RETARGET_SerialInit();
 		unsigned int stacked_r0;
 		unsigned int stacked_r1;
 		unsigned int stacked_r2;
