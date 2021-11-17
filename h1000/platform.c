@@ -3,7 +3,7 @@
  *
  * Copyright Thinnect Inc. 2021
  * @license MIT
-*/
+ */
 
 #include "platform.h"
 #include "platform_io.h"
@@ -25,9 +25,41 @@
 #include "flash.h"
 #include "version.h"
 
+#include "retargetserial.h"
 
-bool buttonstate = 0;
+#include "sys_panic.h"
+
+#ifdef DUMP_LOG_BUF
+extern uint8_t m_log_dma_buf;
+#endif
+
+extern void dbg_printf (const char *format, ...);
+extern void init_config(void);
+extern void SysTick_Handler (void); // 223
+extern void SVC_Handler (void); // 221
+extern void PendSV_Handler (void); // 222
+
+void hard_fault_handler_c(unsigned int * hardfault_args, unsigned lr_value);
+__asm void hard_fault_handler_asm (void);
+
+
+/*----------------------------------------------------------------------------
+  Define clocks
+ *----------------------------------------------------------------------------*/
+#define  XTAL            (16000000UL)     /* Oscillator frequency */
+
+#define  SYSTEM_CLOCK    (XTAL)
+
+/*----------------------------------------------------------------------------
+  System Core Clock Variable
+ *----------------------------------------------------------------------------*/
+uint32_t SystemCoreClock = SYSTEM_CLOCK;  /* System Core Clock Frequency */
+
 volatile uint8_t g_clk32K_config;
+
+static uint8_t m_leds;
+
+static bool m_button_state;
 
 
 static void hal_low_power_io_init (void)
@@ -50,8 +82,11 @@ static void hal_low_power_io_init (void)
        {GPIO_P00,   GPIO_PULL_DOWN  },
        {GPIO_P01,   GPIO_PULL_DOWN  },
        {GPIO_P07,   GPIO_PULL_UP  },
+       {GPIO_P11,   GPIO_PULL_DOWN  },
        {GPIO_P17,   GPIO_FLOATING   },/*32k xtal*/
-       {GPIO_P23,   GPIO_PULL_UP  },
+       {GPIO_P18,   GPIO_PULL_DOWN  },
+       {GPIO_P20,   GPIO_PULL_DOWN  },
+       {GPIO_P23,   GPIO_PULL_UP    },
        {GPIO_P24,   GPIO_PULL_DOWN  },
        {GPIO_P25,   GPIO_PULL_DOWN  },
        {GPIO_P26,   GPIO_PULL_DOWN  },
@@ -62,8 +97,10 @@ static void hal_low_power_io_init (void)
        {GPIO_P34,   GPIO_PULL_DOWN  },
 #endif
     };
-    for(uint8_t i=0;i<sizeof(ioInit)/sizeof(ioinit_cfg_t);i++)
+    for (uint8_t i=0; i<sizeof(ioInit)/sizeof(ioinit_cfg_t); i++)
+    {
         hal_gpio_pull_set(ioInit[i].pin,ioInit[i].type);
+    }
 
     DCDC_CONFIG_SETTING(0x0a); DCDC_REF_CLK_SETTING(1);
     DIG_LDO_CURRENT_SETTING(0x01);
@@ -96,9 +133,8 @@ static void hal_init (void)
 
 void PLATFORM_Init (void)
 {
-	g_system_clk = SYS_CLK_DLL_32M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
+    g_system_clk = SYS_CLK_DLL_32M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
     g_clk32K_config = CLK_32K_XTAL;
-
 
     drv_irq_init();
     init_config();
@@ -106,16 +142,12 @@ void PLATFORM_Init (void)
 }
 
 
-static uint8_t m_leds;
-
-
 void PLATFORM_LedsSet (uint8_t leds)
 {
-	//LOG("Count is %d \r\n", leds);
     m_leds = leds;
-	hal_gpio_write(LED_1, leds & LED_1_MASK);
-	hal_gpio_write(LED_2, leds & LED_2_MASK);
-	hal_gpio_write(LED_3, leds & LED_3_MASK);
+    hal_gpio_write(LED_1, leds & LED_1_MASK);
+    hal_gpio_write(LED_2, leds & LED_2_MASK);
+    hal_gpio_write(LED_3, leds & LED_3_MASK);
 }
 
 
@@ -127,7 +159,107 @@ uint8_t PLATFORM_LedsGet (void)
 
 bool PLATFORM_ButtonGet (void)
 {
-	buttonstate = hal_gpio_read(PLATFORM_BUTTON);
-	//WaitMs(200);
-	return (buttonstate != hal_gpio_read(PLATFORM_BUTTON));
+    m_button_state = hal_gpio_read(PLATFORM_BUTTON);
+    //WaitMs(200);
+    return (m_button_state != hal_gpio_read(PLATFORM_BUTTON));
 }
+
+/*----------------------------------------------------------------------------
+  System Core Clock update function
+ *----------------------------------------------------------------------------*/
+void SystemCoreClockUpdate (void)
+{
+    switch(g_system_clk)
+    {
+        case SYS_CLK_XTAL_16M:
+            SystemCoreClock = XTAL;
+            break;
+        case SYS_CLK_DLL_32M:
+            SystemCoreClock = 2 * XTAL;
+            break;
+        case SYS_CLK_DLL_48M:
+            SystemCoreClock = 3 * XTAL;
+            break;
+        case SYS_CLK_DLL_64M:
+            SystemCoreClock = 4 * XTAL;
+            break;
+        case SYS_CLK_DLL_96M:
+            SystemCoreClock = 6 * XTAL;
+            break;
+        default:
+            sys_panic("Clock Init");
+    }
+}
+
+/*----------------------------------------------------------------------------
+  System initialization function
+ *----------------------------------------------------------------------------*/
+void SystemInit (void)
+{
+    SystemCoreClock = SYSTEM_CLOCK;
+}
+
+__asm void hard_fault_handler_asm(void)
+{
+    MOVS r0, #4
+    MOV r1, LR
+    TST r0, r1
+    BEQ stacking_used_MSP
+    MRS R0, PSP
+    B get_LR_and_branch
+stacking_used_MSP
+    MRS R0, MSP
+get_LR_and_branch
+    MOV R1, LR
+    LDR R2,=__cpp(hard_fault_handler_c)
+    BX R2
+}
+
+#ifdef DUMP_LOG_BUF
+void dump_ldma_buf()
+{
+    hal_uart_send_buff(UART0, (uint8_t*)&m_log_dma_buf, 256);
+}
+#endif
+
+
+/*******************************************************************************
+ * HardFault handler in C, with stack frame location and LR value
+ * extracted from the assembly wrapper as input parameters
+ */
+void hard_fault_handler_c (unsigned int * hardfault_args, unsigned lr_value)
+{
+    RETARGET_SerialInit();
+    unsigned int stacked_r0;
+    unsigned int stacked_r1;
+    unsigned int stacked_r2;
+    unsigned int stacked_r3;
+    unsigned int stacked_r12;
+    unsigned int stacked_lr;
+    unsigned int stacked_pc;
+    unsigned int stacked_psr;
+    stacked_r0 = ((unsigned long) hardfault_args[0]);
+    stacked_r1 = ((unsigned long) hardfault_args[1]);
+    stacked_r2 = ((unsigned long) hardfault_args[2]);
+    stacked_r3 = ((unsigned long) hardfault_args[3]);
+    stacked_r12 = ((unsigned long) hardfault_args[4]);
+    stacked_lr = ((unsigned long) hardfault_args[5]);
+    stacked_pc = ((unsigned long) hardfault_args[6]);
+    stacked_psr = ((unsigned long) hardfault_args[7]);
+    dbg_printf("\r\n[HardFault handler]\r\n");
+    dbg_printf("R0 = %X\r\n", stacked_r0);
+    dbg_printf("R1 = %X\r\n", stacked_r1);
+    dbg_printf("R2 = %X\r\n", stacked_r2);
+    dbg_printf("R3 = %X\r\n", stacked_r3);
+    dbg_printf("R12 = %X\r\n", stacked_r12);
+    dbg_printf("Stacked LR = %X\r\n", stacked_lr);
+    dbg_printf("Stacked PC = %X\r\n", stacked_pc);
+    dbg_printf("Stacked PSR = %X\r\n", stacked_psr);
+    dbg_printf("Current LR = %X\r\n", lr_value);
+#ifdef DUMP_LOG_BUF
+    dbg_printf("[Dumping log]\r\n");
+    dump_ldma_buf();
+#endif
+    while(1); // endless loop
+}
+

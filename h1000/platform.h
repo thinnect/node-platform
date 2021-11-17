@@ -10,10 +10,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-void PLATFORM_Init(void);
-void PLATFORM_LedsSet(uint8_t leds);
-bool PLATFORM_ButtonGet(void);
-void PLATFORM_uart(void);
+void PLATFORM_Init (void);
+void PLATFORM_LedsSet (uint8_t leds);
+bool PLATFORM_ButtonGet (void);
 
 #endif//PLATFORM_H
 

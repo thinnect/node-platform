@@ -9,19 +9,20 @@
  * @license MIT
  * @author Raido Pahtma
  */
-#pragma once
+#ifndef WATCHDOG_H
+#define WATCHDOG_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
 #ifndef WATCHDOG_PERIOD
 #define WATCHDOG_PERIOD 4000
-#endif
+#endif//WATCHDOG_PERIOD
 
 /**
  * Feed the watchdog.
  */
-void watchdog_feed();
+void watchdog_feed(void);
 
 /**
  * Enable the watchdog with the specified period.
@@ -37,12 +38,12 @@ bool watchdog_enable(uint32_t timeout_ms);
  *
  * @return watchdog period or UINT32_MAX if disabled.
  */
-uint32_t watchdog_period();
+uint32_t watchdog_period(void);
 
 /**
  * Disable the watchdog.
  */
-void watchdog_disable();
+void watchdog_disable(void);
 
 /**
  * Watchdog warning callback.
@@ -71,9 +72,11 @@ bool watchdog_enable_warning(uint32_t timeout_ms, watchdog_warning_f* callback);
  *
  * @return watchdog period or UINT32_MAX if disabled.
  */
-uint32_t watchdog_warning_period();
+uint32_t watchdog_warning_period(void);
 
 /**
  * Disable the watchdog warning.
  */
-void watchdog_disable_warning();
+void watchdog_disable_warning(void);
+
+#endif// WATCHDOG_H
