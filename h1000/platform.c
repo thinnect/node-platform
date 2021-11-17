@@ -96,7 +96,7 @@ static void hal_init (void)
 
 void PLATFORM_Init (void)
 {
-	g_system_clk = SYS_CLK_DLL_48M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
+	g_system_clk = SYS_CLK_DLL_32M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
     g_clk32K_config = CLK_32K_XTAL;
 
 

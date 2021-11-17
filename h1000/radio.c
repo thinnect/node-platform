@@ -177,17 +177,8 @@ static uint8_t m_csma_retries;
 static comms_status_change_f* m_state_change_cb;
 static void* m_state_change_user;
 
-static uint8_t m_radio_channel_configured;
-static uint8_t m_radio_channel_current;
-
-static uint32_t m_stop_timestamp;
-
-static bool transfer_pending = false;
 static bool m_sending_ack = false;
 static uint8_t ack_seq = 0;
-
-static uint32_t max_fine_time = 0;
-static uint32_t max_carr_cnt;
 
 static bool m_stopping_hw;
 
@@ -208,6 +199,7 @@ static void update_tx_stats(comms_msg_t * msg)
         + 2);
 }
 
+#if 0
 static void zb_hw_go (void)
 {
     *(volatile uint32_t*)(LL_HW_BASE + 0x14) = LL_HW_IRQ_MASK;    //clr  irq status
@@ -233,7 +225,7 @@ static void zb_hw_go (void)
     hal_gpio_write(DBG_PIN_LL_HW_TRIG, 0);
 #endif
 }
-
+#endif
 
 // fine_time is 1 MHz, 22 bits.
 static uint32_t fine_time_passed (uint32_t ts)
@@ -572,8 +564,6 @@ static phy_sts_t checkEther (void)
     }
     osKernelRestoreLock(lock);
     // for debugging, delete later!
-    max_fine_time = elapsed_time;
-    max_carr_cnt = carr_cnt;
 
     tx_timestamps[STOP_CHECK_ETHER] = radio_timestamp();
 
@@ -591,7 +581,8 @@ static phy_sts_t checkEther (void)
 
 static volatile bool m_in_irq; // TODO remove once suspicions of re-entrancy have disappeared
 
-void RFPHY_IRQHandler (void)
+static void RFPHY_IRQHandler (void) __attribute__((section("_section_sram_code_")));
+static void RFPHY_IRQHandler (void)
 {
     HAL_ENTER_CRITICAL_SECTION();
     if (m_in_irq)
@@ -1084,16 +1075,9 @@ static void stop_radio_now ()
 
     data_pckt_t packet = {0};
     // Discard any pending RX messages
-    while (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0))
-    {
-    }
+    while (osOK == osMessageQueueGet(m_config.recvQueue, &packet, NULL, 0));
 
-    m_stop_timestamp = radio_timestamp();
-
-    while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever))
-    {
-    }
-
+    while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
     m_state = ST_OFF;
     osMutexRelease(m_radio_mutex);
 
@@ -1105,8 +1089,6 @@ static void stop_radio_now ()
 static void start_radio_now ()
 {
     //debug1("start");
-
-    m_radio_channel_current = m_radio_channel_configured;
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
 
@@ -1121,7 +1103,6 @@ static void start_radio_now ()
 
 static void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 {
-    uint8_t cnt = 0;
     // uint8_t seed[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     // uint8_t crcCode[2]={0xff,0xff};
 
@@ -1181,7 +1162,6 @@ static void rf_tx (uint8_t* buf, uint8_t len, bool needAck, uint32_t evt_time)
 
     tx_timestamps[RF_TX_DONE] = radio_timestamp();
     m_radio_send_timestamp = radio_timestamp();
-    transfer_pending = true;
 
     osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
 
@@ -1399,7 +1379,6 @@ static void handle_radio_tx (uint32_t flags)
         else if (flags & RDFLG_RAIL_SEND_BUSY)
         {
             bool resend = false;
-            transfer_pending = false;
 
             //osTimerStop(m_send_timeout_timer);
 
@@ -1431,7 +1410,6 @@ static void handle_radio_tx (uint32_t flags)
         // Sending has failed in some generic way ------------------------------
         else if (flags & RDFLG_RADIO_SEND_FAIL)
         {
-            transfer_pending = false;
             signal_send_done(COMMS_FAIL);
         }
         // Sending has not completed in a reasonable amount of time ------------
@@ -1446,7 +1424,6 @@ static void handle_radio_tx (uint32_t flags)
                 HAL_ENTER_CRITICAL_SECTION();
                 while(1);
 
-                transfer_pending = false;
                 signal_send_done(COMMS_ETIMEOUT);
 
                 // Presumably something is wrong with the radio
