@@ -821,39 +821,41 @@ static void RFPHY_IRQHandler (void)
             //     rf_rxCbFunc(rxPkt);
             // }
 
-            uint16_t src = ((uint16_t)packet.buffer[8] << 0) | ((uint16_t)packet.buffer[9] << 8);
             uint8_t len = packet.buffer[0];
-            uint16 rts_sec = (uint16_t)(rts >> 10);
-						
-            if ((!radio_seqNum_save(src, packet.buffer[3], rts_sec)) && (len >= 12))
+            
+            if (len >= 12)
             {
-                m_same_seqNum = packet.buffer[3];
-                osThreadFlagsSet(m_config.threadid, RDFLG_SAME_SEQNUM);
-            }
-            // if not ack
-            else if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
-            {
-                // TODO; use microseconds in the future
-                // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
-                rts = rts - 3; //airTimeUs;
-                // Replace used CRC with timestamp
-                packet.buffer[len - 1] = rts >> 24;
-                packet.buffer[len] = rts >> 16;
-                packet.buffer[len + 1] = rts >> 8;
-                packet.buffer[len + 2] = rts;
-
-                packet.rssi = -1 * zbRssi;
-
-                // TODO: use linked list instead? it takes approx 300-400us to put msg in queue
-                int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
-                if(osOK != res)
+                uint16 rts_sec = (uint16_t)(rts >> 10);
+                uint16_t src = ((uint16_t)packet.buffer[8] << 0) | ((uint16_t)packet.buffer[9] << 8);
+                if ((!radio_seqNum_save(src, packet.buffer[3], rts_sec)))
                 {
-                    osThreadFlagsSet(m_config.threadid, RDFLG_QUEUE_ERROR);
-                }
-                else
+                    m_same_seqNum = packet.buffer[3];
+                    osThreadFlagsSet(m_config.threadid, RDFLG_SAME_SEQNUM);
+								}
+								else if ((dest1 == RADIO_BROADCAST_ADDR) || (dest1 == m_config.nodeaddr))
                 {
-                    osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
-                    rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
+                    // TODO; use microseconds in the future
+                    // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
+                    rts = rts - 3; //airTimeUs;
+                    // Replace used CRC with timestamp
+                    packet.buffer[len - 1] = rts >> 24;
+                    packet.buffer[len] = rts >> 16;
+                    packet.buffer[len + 1] = rts >> 8;
+                    packet.buffer[len + 2] = rts;
+
+                    packet.rssi = -1 * zbRssi;
+
+                    // TODO: use linked list instead? it takes approx 300-400us to put msg in queue
+                    int res = osMessageQueuePut(m_config.recvQueue, &packet, 0, 0); //TODO packet len off by 2
+                    if(osOK != res)
+                    {
+                        osThreadFlagsSet(m_config.threadid, RDFLG_QUEUE_ERROR);
+                    }
+                    else
+                    {
+                        osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_RX_SUCCESS);
+                        rx_timestamps[RX_IRQ_FINISH] = radio_timestamp();
+                    }
                 }
             }
         }
