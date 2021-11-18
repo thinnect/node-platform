@@ -1703,7 +1703,7 @@ static void radio_task (void* arg)
     }
 }
 
-radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
+radio_config_t * init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
 {
     if(channel < 10 || channel > 26)
     {

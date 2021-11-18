@@ -48,7 +48,7 @@ __asm void hard_fault_handler_asm (void);
  *----------------------------------------------------------------------------*/
 #define  XTAL            (16000000UL)     /* Oscillator frequency */
 
-#define  SYSTEM_CLOCK    (XTAL)
+#define  SYSTEM_CLOCK    (2 * XTAL)
 
 /*----------------------------------------------------------------------------
   System Core Clock Variable
@@ -81,7 +81,7 @@ static void hal_low_power_io_init (void)
         //6222 23 IO
        {GPIO_P00,   GPIO_PULL_DOWN  },
        {GPIO_P01,   GPIO_PULL_DOWN  },
-       {GPIO_P07,   GPIO_PULL_UP  },
+       {GPIO_P07,   GPIO_PULL_UP    },
        {GPIO_P11,   GPIO_PULL_DOWN  },
        {GPIO_P17,   GPIO_FLOATING   },/*32k xtal*/
        {GPIO_P18,   GPIO_PULL_DOWN  },
@@ -121,12 +121,14 @@ static void hal_init (void)
     SystemCoreClockUpdate();
 
     hal_pwrmgr_init();
+
     xflash_Ctx_t cfg =
     {
         .spif_ref_clk   =   SYS_CLK_DLL_64M,
         .rd_instr       =   XFRD_FCMD_READ_DUAL
     };
     hal_spif_cache_init(cfg);
+
     hal_gpio_init();
 }
 
@@ -136,6 +138,13 @@ void PLATFORM_Init (void)
     g_system_clk = SYS_CLK_DLL_32M; //SYS_CLK_XTAL_16M, SYS_CLK_DLL_32M, SYS_CLK_DLL_64M
     g_clk32K_config = CLK_32K_XTAL;
 
+    //Setup Jumptable entries
+    JUMP_FUNCTION(HARDFAULT_HANDLER) = (uint32_t)&hard_fault_handler_asm;
+    JUMP_FUNCTION(SVC_HANDLER) = (uint32_t)&SVC_Handler;
+    JUMP_FUNCTION(PENDSV_HANDLER) = (uint32_t)&PendSV_Handler;
+    JUMP_FUNCTION(SYSTICK_HANDLER) = (uint32_t)&SysTick_Handler;
+
+    // Init everything else
     drv_irq_init();
     init_config();
     hal_init();
