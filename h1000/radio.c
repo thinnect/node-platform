@@ -9,6 +9,7 @@
 #include "assert.h"
 
 #include "gpio.h"
+#include "radio_seqNum.h"
 
 #include "loglevels.h"
 #define __MODUUL__ "radio"
@@ -55,6 +56,7 @@
 #define RDFLG_CRC_ERROR           (1 << 26)
 #define RDFLG_QUEUE_ERROR         (1 << 27)
 #define RDFLG_BAD_PACKET_LENGTH   (1 << 28)
+#define RDFLG_SAME_SEQNUM         (1 << 29)
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
@@ -189,6 +191,7 @@ static uint32_t m_transmitted_packets;
 static uint32_t m_transmitted_bytes;
 
 static uint16_t m_bad_packet_length;
+static uint16_t m_same_seqNum;
 
 static void update_tx_stats(comms_msg_t * msg)
 {
@@ -818,10 +821,17 @@ static void RFPHY_IRQHandler (void)
             //     rf_rxCbFunc(rxPkt);
             // }
 
-            // Set timestamp
+            uint16_t src = ((uint16_t)packet.buffer[8] << 0) | ((uint16_t)packet.buffer[9] << 8);
             uint8_t len = packet.buffer[0];
+            uint16 rts_sec = (uint16_t)(rts >> 10);
+						
+            if ((!radio_seqNum_save(src, packet.buffer[3], rts_sec)) && (len >= 12))
+            {
+                m_same_seqNum = packet.buffer[3];
+                osThreadFlagsSet(m_config.threadid, RDFLG_SAME_SEQNUM);
+            }
             // if not ack
-            if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
+            else if (len > 5 && ( dest1 == RADIO_BROADCAST_ADDR || (dest1 == m_config.nodeaddr) ) )
             {
                 // TODO; use microseconds in the future
                 // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
@@ -1613,6 +1623,11 @@ static void handle_radio_events (uint32_t flags)
     if (flags & RDFLG_BAD_PACKET_LENGTH)
     {
         err1("BAD PACKET %d", (int)m_bad_packet_length);
+    }
+		
+    if (flags & RDFLG_SAME_SEQNUM)
+    {
+        warn1("same sequence number: %02X", m_same_seqNum);
     }
 
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
