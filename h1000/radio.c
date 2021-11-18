@@ -831,8 +831,8 @@ static void RFPHY_IRQHandler (void)
                 {
                     m_same_seqNum = packet.buffer[3];
                     osThreadFlagsSet(m_config.threadid, RDFLG_SAME_SEQNUM);
-								}
-								else if ((dest1 == RADIO_BROADCAST_ADDR) || (dest1 == m_config.nodeaddr))
+                }
+                else if ((dest1 == RADIO_BROADCAST_ADDR) || (dest1 == m_config.nodeaddr))
                 {
                     // TODO; use microseconds in the future
                     // uint32_t airTimeUs = ((len + 1) * 8) * 4; // packet length / transmission speed
