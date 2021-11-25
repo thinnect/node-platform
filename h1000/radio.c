@@ -794,7 +794,7 @@ static void RFPHY_IRQHandler (void)
                     // ackTxBuf[5] = crcCode[1];
 
                     // ll_hw_write_tfifo(ackTxBuf, 6);//include the crc16
-                    ll_hw_write_tfifo(ackTxBuf, 4); //no crc16
+                    ll_hw_write_tfifo(ackTxBuf, 6); //no crc16
                     rx_timestamps[SEND_ACK] = radio_timestamp();
                     osThreadFlagsSet(m_config.threadid, RDFLG_ACK_START);
                     ll_hw_go();
