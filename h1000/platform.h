@@ -12,6 +12,7 @@
 
 void PLATFORM_Init (void);
 void PLATFORM_LedsSet (uint8_t leds);
+uint8_t PLATFORM_LedsGet (void);
 bool PLATFORM_ButtonGet (void);
 
 #endif//PLATFORM_H
