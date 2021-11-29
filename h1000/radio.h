@@ -102,7 +102,6 @@ typedef struct
 	uint8_t channel;
 	uint8_t pan;
 	uint8_t status;
-	uint8_t mode;
 	uint8_t errno;
 	int8_t cca_treshhold;
 	osMessageQueueId_t recvQueue;
@@ -124,18 +123,20 @@ extern int app_main(void);
 extern void init_config(void);
 extern  uint32_t pclk;
 
-radio_config_t* init_radio(uint16_t nodeaddr, uint8_t channel, uint8_t pan);
-comms_error_t radio_send(comms_layer_iface_t*, comms_msg_t*, comms_send_done_f*, void* user);
+radio_config_t* init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan) __attribute__((section("_section_xip_code_")));
+
+comms_error_t radio_send (comms_layer_iface_t*, comms_msg_t*, comms_send_done_f*, void* user);
+
 /**
  * Radio statistics - count number of transmitted packets (including retries).
  * @return number of transmitted packets.
  */
-uint32_t radio_tx_packets();
+uint32_t radio_tx_packets (void);
 
 /**
  * Radio statistics - roughly estimate the number of transmitted bytes.
  * @return Transmitted bytes.
  */
-uint32_t radio_tx_bytes();
+uint32_t radio_tx_bytes (void);
 
 #endif

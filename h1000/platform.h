@@ -7,14 +7,12 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-#include "gpio.h"
-#include "error.h"
-#include "log.h"
+#include <stdint.h>
+#include <stdbool.h>
 
-void PLATFORM_Init(void);
-void PLATFORM_LedsSet(uint8_t leds);
-bool PLATFORM_ButtonGet(void);
-void PLATFORM_uart(void);
+void PLATFORM_Init (void);
+void PLATFORM_LedsSet (uint8_t leds);
+bool PLATFORM_ButtonGet (void);
 
-#endif
+#endif//PLATFORM_H
 
