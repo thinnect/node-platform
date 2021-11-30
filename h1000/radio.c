@@ -17,6 +17,8 @@
 #include "log.h"
 #include "sys_panic.h"
 
+#define RADIO_TOS_MAX_PAYLOAD_LENGTH 114
+
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
 
@@ -1030,6 +1032,11 @@ static comms_error_t radio_start (comms_layer_iface_t* interface, comms_status_c
     return err;
 }
 
+static uint8_t radio_max_length (comms_layer_iface_t * iface)
+{
+    return RADIO_TOS_MAX_PAYLOAD_LENGTH;
+}
+
 static void radio_send_timeout_cb (void* argument)
 {
     osThreadFlagsSet(m_config.threadid, RDFLG_RADIO_SEND_TIMEOUT);
@@ -1707,10 +1714,11 @@ radio_config_t * init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     m_config.pan = pan;
     m_config.cca_treshhold = 70;
 
-    int res = comms_am_create((comms_layer_t *)&m_radio_iface, nodeaddr, radio_send, radio_start, radio_stop);
-
-    if(COMMS_SUCCESS != res)
+    if (COMMS_SUCCESS != comms_am_create((comms_layer_t *)&m_radio_iface, nodeaddr,
+                                         radio_send, radio_max_length,
+                                         radio_start, radio_stop))
     {
+        err1("cam");
         return NULL;
     }
 
