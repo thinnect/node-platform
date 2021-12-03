@@ -10,13 +10,14 @@
 
 int RETARGET_SerialInit (void)
 {
-    uart_Cfg_t cfg = {
-#ifndef TEST_SYSTEM
-          .tx_pin = P9,
-          .rx_pin = P10,
+    uart_Cfg_t cfg = 
+    {
+#if TEST_SYSTEM == 1
+        .tx_pin = P14,
+        .rx_pin = P15,
 #else
-          .tx_pin = P14,
-          .rx_pin = P15,
+        .tx_pin = P9,
+        .rx_pin = P10,
 #endif
         .rts_pin = GPIO_DUMMY,
         .cts_pin = GPIO_DUMMY,
