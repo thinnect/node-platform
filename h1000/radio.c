@@ -20,7 +20,7 @@
 //#define LOG_TX_TIMESTAMPS 1
 //#define LOG_RX_TIMESTAMPS 1
 
-#define RADIO_MAX_SEND_TIME_MS 10000UL
+#define RADIO_MAX_SEND_TIME_MS 2000UL //10000UL
 #define RADIO_WAIT_FOR_ACK_SENT_MS 2
 #define RADIO_WAIT_HW_STOP_CNT 10000
 #define RADIO_BROADCAST_ADDR 0xFFFF
@@ -1411,9 +1411,9 @@ static void handle_radio_tx (uint32_t flags)
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
                 err1("TIMEOUT %d", passed);
-                osDelay(1000);
-                HAL_ENTER_CRITICAL_SECTION();
-                while(1);
+                // osDelay(1000);
+                // HAL_ENTER_CRITICAL_SECTION();
+                // while(1);
 
                 signal_send_done(COMMS_ETIMEOUT);
 
