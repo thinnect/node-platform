@@ -120,6 +120,12 @@ uint32_t radio_tx_packets();
 uint32_t radio_tx_bytes();
 
 /**
+ * Get the current radio time in microseconds. May not tick if radio sleeping!
+ * @return Current timestamp, microseconds.
+ */
+uint32_t radio_timestamp_micro (void);
+
+/**
  * Poll the radio.
  * Necessary on "basic" implementations.
  *
