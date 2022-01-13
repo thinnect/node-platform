@@ -651,9 +651,10 @@ static void RFPHY_IRQHandler (void)
     m_rf_mode = RFPHY_IDLE;
     mode = ll_hw_get_tr_mode();
 
-    if ((m_irq_flag & LIRQ_RTO) && (m_irq_flag & LIRQ_MD) && m_wire && (m_csma_attempt != 0) && !(m_irq_flag & LIRQ_COK))// && !(m_irq_flag & LIRQ_TD) && !(m_irq_flag & LIRQ_CERR))
+    if ((m_irq_flag & LIRQ_RTO) && (m_irq_flag & LIRQ_MD) && m_wire && (m_csma_attempt != 0) && !(m_irq_flag & LIRQ_COK) && !(m_irq_flag & LIRQ_TD) && !(m_irq_flag & LIRQ_CERR))
     {
         gpio_write(P20, 0);
+        gpio_write(P11, 0);
 
         m_wire = false;
         m_csma_attempt = 0; // clear attempt and tx packet
@@ -675,20 +676,33 @@ static void RFPHY_IRQHandler (void)
     if (m_irq_flag & LIRQ_TD)
     {
         gpio_write(P26,0);
+        
         if (m_sending_ack)
         {
             m_sending_ack = false;
             //dbg_printf("I|radio:557| Ack sent flag\n");
             rx_timestamps[SEND_DONE_ACK] = radio_timestamp();
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_TXACK_SENT);
-
+            // check for pending CSMA attempt and set Rx timeout to send
+//            if ((m_csma_attempt != 0) && (m_csma_attempt < 7))
+//            {
+//                rf_setRxModeIRQ(450);
+//                m_wire = true;
+//                m_csma_attempt++;
+//            }        
         }
         else if (!radio_tx_wait_ack)
         {
-            gpio_write(P18, 0);
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
             //dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
+            // check for pending CSMA attempt and set Rx timeout to send
+//            if ((m_csma_attempt != 0) && (m_csma_attempt < 7))
+//            {
+//                rf_setRxModeIRQ(450);
+//                m_wire = true;
+//                m_csma_attempt++;
+//            }
         }
 
         // enable Rx again if Tx mode is not activated
@@ -698,11 +712,13 @@ static void RFPHY_IRQHandler (void)
             // rf_setRxModeIRQ() takes approx 150us with 32MHz clock
             if (radio_tx_wait_ack)
             {
+                gpio_write(P18, 1);
                 m_waiting_ack = true;
                 rf_setRxModeIRQ(714);
             }
             else
             {
+                // gpio_write(P11, 1);
                 m_csma_attempt = 0;
                 m_wire = false;
                 rf_setRxModeIRQ(MAX_RX_TIMEOUT);
@@ -712,7 +728,7 @@ static void RFPHY_IRQHandler (void)
     // Rx mode
     else if ((mode == LL_HW_MODE_SRX || mode == LL_HW_MODE_TRX))
     {
-        gpio_write(P11, 1);
+        // gpio_write(P11, 1);
         uint8_t  packet_len32 = 0;
         uint16_t pktLen = 0;
 
@@ -729,7 +745,7 @@ static void RFPHY_IRQHandler (void)
                 rf_phy_get_pktFoot_fromPkt(m_foot[0], m_foot[1], &zbRssi, &zbFoff, &zbCarrSens);
             }
             g_rf_irq_plen = pktLen;
-            gpio_write(P11, 0);
+            // gpio_write(P11, 0);
 						
         }
         else if (m_irq_flag & LIRQ_CERR)
@@ -783,6 +799,7 @@ static void RFPHY_IRQHandler (void)
             {
                 if (radio_tx_wait_ack)
                 {
+                    gpio_write(P18, 0);
                     m_waiting_ack = false;
                     osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
                 }
@@ -848,7 +865,7 @@ static void RFPHY_IRQHandler (void)
                 {
                     if ((m_csma_attempt != 0) && (m_csma_attempt < 7))
                     {
-                        //gpio_write(P1, 1);
+                        gpio_write(P11, 1);
                         m_wire = true;
                         rf_setRxModeIRQ(450);
                         m_csma_attempt++;
@@ -859,7 +876,7 @@ static void RFPHY_IRQHandler (void)
                         m_csma_attempt = 0;
 										
                         rf_setRxModeIRQ(MAX_RX_TIMEOUT); // just go to RX mode
-									}
+					}
                 }
             }
             // Set timestamp
@@ -915,7 +932,8 @@ static void RFPHY_IRQHandler (void)
     ll_hw_clr_irq();
 
     gpio_write(P23, 0);
-
+    //gpio_write(P11, 0);
+    
     m_in_irq = false;
     HAL_EXIT_CRITICAL_SECTION();
     return;
@@ -1166,6 +1184,8 @@ static void rf_tx_now (void)
 {
     uint8_t buff[140] = {0};
 
+    gpio_write(P26, 1);
+    
     osMessageQueueGet(txQueue, &buff, NULL, 0);
     uint8_t len = buff[0] + 1;
 		
@@ -1735,7 +1755,7 @@ static void radio_task (void* arg)
 				
         if (flags & RDFLG_TX_NOW)
         {
-            gpio_write(P18, 1);
+            //gpio_write(P18, 1);
             rf_tx_now();
         }
 
@@ -1794,6 +1814,7 @@ radio_config_t * init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     gpio_write(P20, 0);
     gpio_write(P18, 0);
     gpio_write(P1, 0);
+    gpio_write(P11, 0);
     m_config.channel = channel;
 
     m_config.nodeaddr = nodeaddr;
