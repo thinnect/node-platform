@@ -675,6 +675,7 @@ static void RFPHY_IRQHandler (void)
     if (m_irq_flag & LIRQ_TD)
     {
         gpio_write(P26,0);
+        
         if (m_sending_ack)
         {
             m_sending_ack = false;
@@ -685,7 +686,7 @@ static void RFPHY_IRQHandler (void)
         }
         else if (!radio_tx_wait_ack)
         {
-            gpio_write(P18, 0);
+            // gpio_write(P18, 0);
             tx_timestamps[IRQ_SEND_DONE] = radio_timestamp();
             //dbg_printf("I|radio:565|Setting rail_send_done_flag\n");
             osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
@@ -698,6 +699,7 @@ static void RFPHY_IRQHandler (void)
             // rf_setRxModeIRQ() takes approx 150us with 32MHz clock
             if (radio_tx_wait_ack)
             {
+                gpio_write(P18, 1);
                 m_waiting_ack = true;
                 rf_setRxModeIRQ(714);
             }
@@ -783,6 +785,7 @@ static void RFPHY_IRQHandler (void)
             {
                 if (radio_tx_wait_ack)
                 {
+                    gpio_write(P18, 0);
                     m_waiting_ack = false;
                     osThreadFlagsSet(m_config.threadid, RDFLG_RAIL_SEND_DONE);
                 }
@@ -1166,6 +1169,8 @@ static void rf_tx_now (void)
 {
     uint8_t buff[140] = {0};
 
+    gpio_write(P26, 1);
+    
     osMessageQueueGet(txQueue, &buff, NULL, 0);
     uint8_t len = buff[0] + 1;
 		
@@ -1199,6 +1204,8 @@ static void rf_tx_now (void)
     m_radio_send_timestamp = radio_timestamp();
 
     osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
+    
+    // gpio_write(P26, 0);
 }
 
 
@@ -1735,7 +1742,7 @@ static void radio_task (void* arg)
 				
         if (flags & RDFLG_TX_NOW)
         {
-            gpio_write(P18, 1);
+            // gpio_write(P18, 1);
             rf_tx_now();
         }
 
@@ -1794,6 +1801,7 @@ radio_config_t * init_radio (uint16_t nodeaddr, uint8_t channel, uint8_t pan)
     gpio_write(P20, 0);
     gpio_write(P18, 0);
     gpio_write(P1, 0);
+    gpio_write(P26, 0);
     m_config.channel = channel;
 
     m_config.nodeaddr = nodeaddr;
