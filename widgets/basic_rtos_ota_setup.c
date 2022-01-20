@@ -10,9 +10,12 @@
 #include "basic_rtos_ota_setup.h"
 
 // OTA updater
+#ifdef INCLUDE_OTA
+#include "libota.h"
+#else
 #include "updater.h"
 #include "updater_fs.h"
-
+#endif
 // Get board UUID
 #include "DeviceSignature.h"
 
