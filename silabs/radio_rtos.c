@@ -36,12 +36,6 @@
 #define DEFAULT_RAIL_TX_POWER_MODE 'N'
 #endif//DEFAULT_RAIL_TX_POWER_MODE
 
-#ifndef RADIO_RTOS_STACK_SIZE
-#define RADIO_RTOS_STACK_SIZE 2048
-#endif//RADIO_RTOS_STACK_SIZE
-
-#define RADIO_TOS_MAX_PAYLOAD_LENGTH 114
-
 #if DEFAULT_RAIL_TX_POWER_MODE=='L'
     #pragma message "RAIL_TX_POWER_MODE_2P4GIG_LP"
     #define DEFAULT_RAIL_TX_POWER_MODE_2P4GIG RAIL_TX_POWER_MODE_2P4GIG_LP
@@ -193,7 +187,6 @@ static comms_error_t radio_stop  (comms_layer_iface_t * iface,
 static comms_error_t radio_send  (comms_layer_iface_t * iface,
                                   comms_msg_t * msg,
                                   comms_send_done_f * send_done, void * user);
-static uint8_t radio_max_length  (comms_layer_iface_t * iface);
 
 // TX queue with a linked list -------------------------------------------------
 static radio_queue_element_t radio_msg_queue_memory[7];
@@ -262,7 +255,6 @@ static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
 
 comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 {
-    debug1("init");
     m_radio_channel_configured = channel;
     m_radio_pan_id = pan_id;
     m_radio_address = address;
@@ -296,25 +288,10 @@ comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
     m_send_timeout_timer = osTimerNew(&radio_send_timeout_cb, osTimerOnce, NULL, NULL);
     m_resend_timer = osTimerNew(&radio_resend_timeout_cb, osTimerOnce, NULL, NULL);
 
-    if (COMMS_SUCCESS != comms_am_create((comms_layer_t *)&m_radio_iface, m_radio_address,
-                                         radio_send, radio_max_length,
-                                         radio_start, radio_stop))
-    {
-        err1("cam");
-        return NULL;
-    }
+    comms_am_create((comms_layer_t *)&m_radio_iface, m_radio_address, radio_send, radio_start, radio_stop);
 
-    const osThreadAttr_t radio_thread_attr = { .name = "radio", .stack_size = RADIO_RTOS_STACK_SIZE };
+    const osThreadAttr_t radio_thread_attr = { .name = "radio", .stack_size = 3072 };
     m_radio_thread_id = osThreadNew(radio_thread, NULL, &radio_thread_attr);
-
-    if ((NULL == m_radio_mutex)
-      ||(NULL == m_send_timeout_timer)
-      ||(NULL == m_resend_timer)
-      ||(NULL == m_radio_thread_id))
-    {
-        err1("osi");
-        return NULL;
-    }
 
     m_state = ST_OFF; // Radio initialized, but not turned ON yet
     m_radio_busy = false; // Protected busy state
@@ -432,7 +409,7 @@ static RAIL_Handle_t radio_rail_init ()
     rx_busy = 0;
     rx_overflow = 0;
     rx_fail = 0;
-    m_rx_fifo_status = RAIL_STATUS_NO_ERROR - 1;
+    m_rx_fifo_status = RAIL_STATUS_NO_ERROR-1;
 
     int32_t priority = RADIO_INTERRUPT_PRIORITY; // not shifted
     NVIC_SetPriority(FRC_PRI_IRQn, priority);
@@ -735,12 +712,6 @@ static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change
 }
 
 
-static uint8_t radio_max_length (comms_layer_iface_t * iface)
-{
-    return RADIO_TOS_MAX_PAYLOAD_LENGTH;
-}
-
-
 static comms_error_t radio_send (comms_layer_iface_t * iface, comms_msg_t * msg,
                                  comms_send_done_f * send_done, void * user)
 {
@@ -810,28 +781,25 @@ static void radio_send_message (comms_msg_t * msg)
         sys_panic("snull");
     }
 
-    comms_layer_t * iface = (comms_layer_t *)&m_radio_iface;
+    comms_layer_t* iface = (comms_layer_t *)&m_radio_iface;
+    RAIL_Status_t rslt;
+    uint16_t count, total;
+    uint16_t src, dst;
+    uint8_t amid;
+    RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
 
-    uint16_t src = comms_am_get_source(iface, msg);
+    count = comms_get_payload_length(iface, msg);
+    src = comms_am_get_source(iface, msg);
     if (src == 0)
     {
         src = m_radio_address;
     }
-
-    uint16_t dst = comms_am_get_destination(iface, msg);
+    dst = comms_am_get_destination(iface, msg);
     if (dst == 0)
     {
         warn1("dest not set");
     }
-
-    uint16_t pan_id = comms_get_packet_group(iface, msg);
-    if (0 == pan_id)
-    {
-        pan_id = m_radio_pan_id;
-    }
-
-    uint8_t amid = comms_get_packet_type(iface, msg);
-
+    amid = comms_get_packet_type(iface, msg);
     // is ack and not broadcast
     if (comms_is_ack_required(iface, msg) && (dst != 0xFFFF))
     {
@@ -845,16 +813,14 @@ static void radio_send_message (comms_msg_t * msg)
     }
     buffer[2] = 0x88;
     buffer[3] = m_radio_tx_num;
-    buffer[4] = ((pan_id >> 0) & (0xFF));
-    buffer[5] = ((pan_id >> 8) & (0xFF));
+    buffer[4] = ((m_radio_pan_id >> 0) & (0xFF));
+    buffer[5] = ((m_radio_pan_id >> 8) & (0xFF));
     buffer[6] = ((dst >> 0) & 0xFF);
     buffer[7] = ((dst >> 8) & 0xFF);
     buffer[8] = ((src >> 0) & 0xFF);
     buffer[9] = ((src >> 8) & 0xFF);
     buffer[10] = 0x3F;
     // AMID handled below
-
-    uint16_t count = comms_get_payload_length(iface, msg);
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
     // Pick correct AMID, add timestamp footer when needed
@@ -862,7 +828,7 @@ static void radio_send_message (comms_msg_t * msg)
     {
         uint32_t evt_time, diff;
         //debug1("evt time valid");
-        buffer[11] = 0x3D; // 3D is used by TinyOS AM for timesync messages
+        buffer[11] = 0x3d; // 3D is used by TinyOS AM for timesync messages
 
         evt_time = comms_get_event_time(iface, msg);
         diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
@@ -873,13 +839,6 @@ static void radio_send_message (comms_msg_t * msg)
         buffer[15+count] = diff>>8;
         buffer[16+count] = diff;
         count += 5;
-
-        if (count > RADIO_TOS_MAX_PAYLOAD_LENGTH)
-        {
-            err1("count %d", (int)count);
-            osThreadFlagsSet(m_radio_thread_id, RDFLG_RADIO_SEND_FAIL);
-            return;
-        }
     }
     else
     {
@@ -888,17 +847,15 @@ static void radio_send_message (comms_msg_t * msg)
     }
 
     buffer[0] = 11 + count + 2; // hdr, data, crc
-    uint16_t total = 1 + 11 + count + 2; // lenb, hdr, data, crc
+    total = 1 + 11 + count + 2; // lenb, hdr, data, crc
     //RAIL_WriteTxFifo(m_rail_handle, buffer, count, true);
     RAIL_SetTxFifo(m_rail_handle, buffer, total, sizeof(buffer));
 
     m_radio_send_timestamp = radio_timestamp();
     m_rail_send_timestamp = m_rail_sent_timestamp = RAIL_GetTime();
 
-
-    const RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
-    RAIL_Status_t rslt;
-    if (radio_tx_wait_ack) // if ack is required in FCF
+    // if ack is required in FCF
+    if (radio_tx_wait_ack)
     {
         rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, RAIL_TX_OPTION_WAIT_FOR_ACK, &csmaConf, NULL);
     }
@@ -1087,15 +1044,13 @@ static void handle_radio_rx()
 
                 uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
                 uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
-                uint16_t pan_id = ((uint16_t)buffer[4] << 0) | ((uint16_t)buffer[5] << 8);
 
                 if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
                 {
                     warn3("same seqNum:%02"PRIX8" %04"PRIX16, buffer[3], source);
                 }
-                else if ((packetInfo.packetBytes >= 12)&&(buffer[2] == 0x88)&&(buffer[10] == 0x3F))
-                // IMPROVE: buffer[10] does not actually have to be 0x3F, it is the TinyOS marker,
-                //          that could be used with an enlarged AMID, as supported in mist-cloud-comm.
+                else if ((packetInfo.packetBytes >= 12)
+                       &&(buffer[2] == 0x88)&&(buffer[5] == 0x00) && (buffer[10] == 0x3F))
                 {
                     comms_msg_t msg;
                     am_id_t amid;
@@ -1105,8 +1060,6 @@ static void handle_radio_rx()
                     uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
 
                     comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
-                    // IMPROVE: AMID 0x3D does not have to be special -  bit in FCF could be used instead
-                    //          This would allow payload to be 1 byte larger for synced messages.
                     if (buffer[11] == 0x3D)
                     {
                         int32_t diff = (buffer[packetInfo.packetBytes - 4] << 24) |
@@ -1115,7 +1068,7 @@ static void handle_radio_rx()
                                    (buffer[packetInfo.packetBytes - 1]);
 
                         if ((packetInfo.packetBytes < 17)
-                          ||(packetInfo.packetBytes > 200)) // FIXME: 200 does not seem like a correct number here!
+                          ||(packetInfo.packetBytes > 200))
                         {
                             sys_panic("packet");
                         }
@@ -1139,9 +1092,7 @@ static void handle_radio_rx()
                         uint16_t dest = ((uint16_t)buffer[6] << 0) | ((uint16_t)buffer[7] << 8);
 
                         comms_set_packet_type((comms_layer_t *)&m_radio_iface, &msg, amid);
-                        comms_set_packet_group((comms_layer_t *)&m_radio_iface, &msg, pan_id);
                         comms_set_payload_length((comms_layer_t *)&m_radio_iface, &msg, plen);
-
                         memcpy(payload, (const void *)&buffer[12], plen);
 
                         if (rts_valid)
