@@ -16,6 +16,7 @@
 
 #include "loglevels.h"
 #define __MODUUL__ "thrds"
+#define __MODID__ 86
 #define __LOG_LEVEL__ (LOG_LEVEL_basic_rtos_threads_stats & BASE_LOG_LEVEL)
 #include "log.h"
 
