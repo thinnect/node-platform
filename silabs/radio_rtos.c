@@ -150,7 +150,7 @@ static volatile uint8_t rx_fail;
 static volatile uint8_t tx_ack_sent;
 
 // TX time monitoring variables
-static uint32_t m_radio_send_timestamp;
+static uint32_t m_os_send_timestamp;
 static uint32_t m_rail_send_timestamp;
 static uint32_t m_rail_sent_timestamp;
 
@@ -162,6 +162,7 @@ static uint64_t m_sleep_time;
 
 // When the radio was stopped last
 static uint32_t m_stop_timestamp;
+static uint32_t m_stop_railtime;
 
 // Packets actually transmitted (energy for TX spent)
 static uint32_t m_transmitted_packets;
@@ -174,8 +175,6 @@ static RAIL_Handle_t radio_rail_init();
 
 // The main RAIL callback function
 static void radio_rail_event_cb(RAIL_Handle_t m_rail_handle, RAIL_Events_t events);
-
-static uint32_t radio_timestamp();
 
 // OS timer callbacks
 static void radio_send_timeout_cb(void* argument);
@@ -194,6 +193,7 @@ static comms_error_t radio_send  (comms_layer_iface_t * iface,
                                   comms_msg_t * msg,
                                   comms_send_done_f * send_done, void * user);
 static uint8_t radio_max_length  (comms_layer_iface_t * iface);
+static uint32_t radio_get_timestamp_micro (comms_layer_iface_t * iface);
 
 // TX queue with a linked list -------------------------------------------------
 static radio_queue_element_t radio_msg_queue_memory[7];
@@ -263,6 +263,13 @@ static RAIL_IEEE802154_Config_t m_radio_ieee802154_config = {
 comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 {
     debug1("init");
+
+    if ( ! comms_verify_api())
+    {
+        err1("API");
+        return NULL;
+    }
+
     m_radio_channel_configured = channel;
     m_radio_pan_id = pan_id;
     m_radio_address = address;
@@ -270,7 +277,8 @@ comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
     m_radio_tx_num = 0;
 
     m_sleep_time = 0;
-    m_stop_timestamp = 0;
+    m_stop_timestamp = osKernelGetTickCount();
+    //m_stop_railtime = RAIL_GetTime();
 
     m_transmitted_packets = 0;
     m_transmitted_bytes = 0;
@@ -298,6 +306,7 @@ comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
 
     if (COMMS_SUCCESS != comms_am_create((comms_layer_t *)&m_radio_iface, m_radio_address,
                                          radio_send, radio_max_length,
+                                         radio_get_timestamp_micro,
                                          radio_start, radio_stop))
     {
         err1("cam");
@@ -637,15 +646,18 @@ uint64_t radio_sleep_time()
     return m_sleep_time;
 }
 
+
 uint32_t radio_tx_packets()
 {
     return m_transmitted_packets;
 }
 
+
 uint32_t radio_tx_bytes()
 {
     return m_transmitted_bytes;
 }
+
 
 void radio_idle()
 {
@@ -659,9 +671,9 @@ void radio_reenable()
 }
 
 
-static uint32_t radio_timestamp ()
+uint32_t radio_timestamp_micro (void)
 {
-    return osKernelGetTickCount();
+    return RAIL_GetTime();
 }
 
 
@@ -741,6 +753,12 @@ static uint8_t radio_max_length (comms_layer_iface_t * iface)
 }
 
 
+static uint32_t radio_get_timestamp_micro (comms_layer_iface_t * iface)
+{
+    return radio_timestamp_micro();
+}
+
+
 static comms_error_t radio_send (comms_layer_iface_t * iface, comms_msg_t * msg,
                                  comms_send_done_f * send_done, void * user)
 {
@@ -766,7 +784,7 @@ static comms_error_t radio_send (comms_layer_iface_t * iface, comms_msg_t * msg,
         qm->msg = msg;
         qm->send_done = send_done;
         qm->user = user;
-        qm->timestamp_queued = radio_timestamp();
+        qm->timestamp_queued = osKernelGetTickCount();
         qm->next = NULL;
 
         if (radio_msg_queue_head == NULL)
@@ -858,14 +876,15 @@ static void radio_send_message (comms_msg_t * msg)
     memcpy(&buffer[12], comms_get_payload(iface, msg, count), count);
 
     // Pick correct AMID, add timestamp footer when needed
+    uint32_t rail_evt_timestamp = radio_timestamp_micro();
     if (comms_event_time_valid(iface, msg))
     {
-        uint32_t evt_time, diff;
         //debug1("evt time valid");
         buffer[11] = 0x3D; // 3D is used by TinyOS AM for timesync messages
 
-        evt_time = comms_get_event_time(iface, msg);
-        diff = evt_time - (radio_timestamp()+1); // It will take at least 448us to get the packet going, round it up
+        uint32_t evt_time = comms_get_event_time_micro(iface, msg);
+        // It will take at least 448us to get the packet going, so add another 100
+        uint32_t diff = evt_time - (rail_evt_timestamp + 548); // FIXME: measure a real value
 
         buffer[12+count] = amid; // Actual AMID is carried after payload
         buffer[13+count] = diff>>24;
@@ -892,10 +911,6 @@ static void radio_send_message (comms_msg_t * msg)
     //RAIL_WriteTxFifo(m_rail_handle, buffer, count, true);
     RAIL_SetTxFifo(m_rail_handle, buffer, total, sizeof(buffer));
 
-    m_radio_send_timestamp = radio_timestamp();
-    m_rail_send_timestamp = m_rail_sent_timestamp = RAIL_GetTime();
-
-
     const RAIL_CsmaConfig_t csmaConf = {0, 0, 1, -75, 320, 128, 0};
     RAIL_Status_t rslt;
     if (radio_tx_wait_ack) // if ack is required in FCF
@@ -906,8 +921,14 @@ static void radio_send_message (comms_msg_t * msg)
     {
         rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
     }
+
+    m_rail_send_timestamp = m_rail_sent_timestamp = radio_timestamp_micro();
+    m_os_send_timestamp = osKernelGetTickCount();
+
     debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
            src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
+
+    debug1("rdelay %d", m_rail_send_timestamp - rail_evt_timestamp);
 
     if (rslt == RAIL_STATUS_NO_ERROR)
     {
@@ -981,7 +1002,7 @@ static void signal_send_done (comms_error_t err)
     user = radio_msg_sending->user;
     msgp = radio_msg_sending->msg;
     send_done = radio_msg_sending->send_done;
-    qtime = radio_timestamp() - radio_msg_sending->timestamp_queued;
+    qtime = osKernelGetTickCount() - radio_msg_sending->timestamp_queued;
 
     radio_msg_sending->next = (radio_queue_element_t*)radio_msg_queue_free;
     radio_msg_queue_free = radio_msg_sending;
@@ -989,8 +1010,8 @@ static void signal_send_done (comms_error_t err)
 
     if (err == COMMS_SUCCESS)
     {
-        comms_set_timestamp((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp());
-        _comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp);
+        comms_set_timestamp_micro((comms_layer_t *)&m_radio_iface, msgp, radio_timestamp_micro());
+        comms_set_ack_received((comms_layer_t *)&m_radio_iface, msgp, true);
     }
 
     if (qtime > 20)
@@ -1034,7 +1055,7 @@ static void assertPacketInfo (RAIL_RxPacketInfo_t * packetInfo)
 }
 
 
-static void handle_radio_rx()
+static void handle_radio_rx (uint32_t flags)
 {
     // RX processing -----------------------------------------------------------
     RAIL_RxPacketHandle_t rxh;
@@ -1085,11 +1106,11 @@ static void handle_radio_rx()
                     sys_panic("release");
                 }
 
-                uint16_t currTime = (uint16_t)(radio_timestamp() >> 10);
+                uint16_t seqTime = (uint16_t)(osKernelGetTickCount() >> 10);
                 uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
                 uint16_t pan_id = ((uint16_t)buffer[4] << 0) | ((uint16_t)buffer[5] << 8);
 
-                if ((!radio_seqNum_save(source, buffer[3], currTime)) && (packetInfo.packetBytes >= 12))
+                if ((!radio_seqNum_save(source, buffer[3], seqTime)) && (packetInfo.packetBytes >= 12))
                 {
                     warn3("same seqNum:%02"PRIX8" %04"PRIX16, buffer[3], source);
                 }
@@ -1098,13 +1119,10 @@ static void handle_radio_rx()
                 //          that could be used with an enlarged AMID, as supported in mist-cloud-comm.
                 {
                     comms_msg_t msg;
-                    am_id_t amid;
-                    void* payload;
-                    uint8_t plen;
-                    uint8_t lqi = 0xFF;
-                    uint32_t timestamp = radio_timestamp() - (RAIL_GetTime() - rts)/1000;
-
                     comms_init_message((comms_layer_t *)&m_radio_iface, &msg);
+
+                    am_id_t amid;
+                    uint8_t plen;
                     // IMPROVE: AMID 0x3D does not have to be special -  bit in FCF could be used instead
                     //          This would allow payload to be 1 byte larger for synced messages.
                     if (buffer[11] == 0x3D)
@@ -1123,7 +1141,9 @@ static void handle_radio_rx()
                         plen = packetInfo.packetBytes - 17;
                         if (rts_valid)
                         {
-                            comms_set_event_time((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + timestamp));
+                            debug1("evt:%"PRIu32" age:%"PRIu32, (uint32_t)(diff + rts),
+                                                                (uint32_t)(radio_timestamp_micro() - (diff + rts)));
+                            comms_set_event_time_micro((comms_layer_t *)&m_radio_iface, &msg, (uint32_t)(diff + rts));
                         }
                     }
                     else
@@ -1132,7 +1152,7 @@ static void handle_radio_rx()
                         plen = packetInfo.packetBytes - 12;
                     }
 
-                    payload = comms_get_payload((comms_layer_t *)&m_radio_iface, &msg, plen);
+                    void * payload = comms_get_payload((comms_layer_t *)&m_radio_iface, &msg, plen);
 
                     if (NULL != payload)
                     {
@@ -1146,9 +1166,10 @@ static void handle_radio_rx()
 
                         if (rts_valid)
                         {
-                            comms_set_timestamp((comms_layer_t *)&m_radio_iface, &msg, timestamp);
+                            comms_set_timestamp_micro((comms_layer_t *)&m_radio_iface, &msg, rts);
                         }
-                        _comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, packetDetails.rssi);
+                        comms_set_rssi((comms_layer_t *)&m_radio_iface, &msg, packetDetails.rssi);
+                        uint8_t lqi = 0xFF;
                         if (packetDetails.rssi < -96)
                         {
                             lqi = 0;
@@ -1157,7 +1178,7 @@ static void handle_radio_rx()
                         {
                             lqi = lqi + (packetDetails.rssi+93)*50;
                         }
-                        _comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
+                        comms_set_lqi((comms_layer_t *)&m_radio_iface, &msg, lqi);
                         comms_am_set_destination((comms_layer_t *)&m_radio_iface, &msg, dest);
                         comms_am_set_source((comms_layer_t *)&m_radio_iface, &msg, source);
 
@@ -1189,7 +1210,7 @@ static void handle_radio_rx()
 }
 
 
-static void update_tx_stats(comms_msg_t * msg)
+static void update_tx_stats (comms_msg_t * msg)
 {
     m_transmitted_packets++; // Packet was actually sent out
     m_transmitted_bytes += (14 // 12 bytes header + 2 bytes CRC
@@ -1291,7 +1312,7 @@ static void handle_radio_tx (uint32_t flags)
         else if (flags & RDFLG_RADIO_SEND_TIMEOUT)
         {
             // Check that an actual timeout has happened and this is not race
-            uint32_t passed = radio_timestamp() - m_radio_send_timestamp;
+            uint32_t passed = osKernelGetTickCount() - m_os_send_timestamp;
             if (passed >= RADIO_MAX_SEND_TIME_MS)
             {
                 err1("TIMEOUT");
@@ -1374,7 +1395,9 @@ static void start_radio_now ()
     info2("start");
 
     SLEEP_SleepBlockBegin(sleepEM2);
-    m_sleep_time += radio_timestamp() - m_stop_timestamp;
+    m_sleep_time += osKernelGetTickCount() - m_stop_timestamp;
+    debug2("sleep %"PRIu32"t %"PRIu32"r", osKernelGetTickCount() - m_stop_timestamp,
+                                          RAIL_GetTime() - m_stop_railtime);
 
     if(RAIL_STATUS_NO_ERROR != radio_rail_configure(m_rail_handle))
     {
@@ -1478,7 +1501,8 @@ static void stop_radio_now ()
         }
     }
 
-    m_stop_timestamp = radio_timestamp();
+    m_stop_timestamp = osKernelGetTickCount();
+    m_stop_railtime = RAIL_GetTime();
     SLEEP_SleepBlockEnd(sleepEM2);
 
     while (osOK != osMutexAcquire(m_radio_mutex, osWaitForever));
