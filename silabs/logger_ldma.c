@@ -27,6 +27,7 @@
 #include "dmadrv.h"
 #else
 #include "em_ldma.h"
+#include "ldma_handler.h"
 #endif//LOGGER_LDMA_DMADRV
 
 #include "sleep.h"
@@ -71,6 +72,7 @@ static bool dmadrv_callback (unsigned int channel, unsigned int sequenceNo, void
 	return false;
 }
 #else
+/*
 void LDMA_IRQHandler (void)
 {
 	uint32_t pending = LDMA_IntGet();
@@ -87,6 +89,7 @@ void LDMA_IRQHandler (void)
 		osThreadFlagsSet(m_ldma_thread, LOGGER_THREAD_FLAG_LDMA_DONE);
 	}
 }
+*/
 #endif//LOGGER_LDMA_DMADRV
 
 
@@ -262,6 +265,12 @@ int logger_ldma_init ()
 			return 1; // should perhaps panic instead
 		}
 	#else
+
+		ldma_handler_conf_t ldma_conf;
+		ldma_conf.channel = LOGGER_LDMA_CHANNEL;
+		ldma_conf.signal = LOGGER_THREAD_FLAG_LDMA_DONE;
+		ldma_conf.thrd = m_ldma_thread;
+
 		LDMA_Init_t initLdma = LDMA_INIT_DEFAULT;
 		initLdma.ldmaInitIrqPriority = LDMA_INTERRUPT_PRIORITY;
 		LDMA_Init(&initLdma);
