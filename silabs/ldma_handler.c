@@ -1,4 +1,5 @@
 
+#include "platform.h"
 #include "em_device.h"
 #include "em_gpio.h"
 #include "em_cmu.h"
@@ -9,26 +10,32 @@
 
 #define SIZE_OF_ARRAY(arr) (sizeof(arr))/sizeof(arr[0])
 
-static ldma_handler_conf_t m_head;
+static volatile ldma_handler_conf_t m_head;
 
 void LDMA_IRQHandler (void)
 {
 	uint32_t pending = LDMA_IntGet();
-
-	while (pending & LDMA_IF_ERROR)
+    PLATFORM_LedsSet(PLATFORM_LedsGet()^1);
+	uint32_t error = 0;
+    while (pending & LDMA_IF_ERROR)
 	{
 		//err1("ldma if");
 	}
 
 	LDMA_IntClear(pending);
 
-
-    for(ldma_handler_conf_t* ptr = &m_head; ptr->next != NULL ; ptr = ptr->next )
+    ldma_handler_conf_t* ptr = &m_head;
+    while(ptr != NULL)
     {
         if ( pending & (1<<ptr->channel) )
 	    {
-		    osThreadFlagsSet(ptr->thrd, ptr->signal);
+		    if(ptr->name == 69)
+            {
+                error = osThreadFlagsSet(ptr->thrd, ptr->signal);
+
+            }
 	    }
+        ptr = ptr->next;
     }
 }
 

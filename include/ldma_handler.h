@@ -6,6 +6,7 @@
 typedef struct {
     int channel;
     osThreadId_t thrd;
+    int name;
     int signal;
     struct ldma_handler_conf_t* next;
 } ldma_handler_conf_t;
