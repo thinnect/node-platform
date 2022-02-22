@@ -230,7 +230,7 @@ static void ldma_thread (void* argument)
 
 		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
-		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE || flags & 16)
+		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE || flags & LOGGER_THREAD_FLAG_NEW_DATA)
 		{
 
 			busy = false;

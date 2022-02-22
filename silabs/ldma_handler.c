@@ -15,8 +15,7 @@ static volatile ldma_handler_conf_t m_head;
 void LDMA_IRQHandler (void)
 {
 	uint32_t pending = LDMA_IntGet();
-    PLATFORM_LedsSet(PLATFORM_LedsGet()^1);
-	uint32_t error = 0;
+
     while (pending & LDMA_IF_ERROR)
 	{
 		//err1("ldma if");
@@ -29,11 +28,7 @@ void LDMA_IRQHandler (void)
     {
         if ( pending & (1<<ptr->channel) )
 	    {
-		    if(ptr->name == 69)
-            {
-                error = osThreadFlagsSet(ptr->thrd, ptr->signal);
-
-            }
+            osThreadFlagsSet(ptr->thrd, ptr->signal);
 	    }
         ptr = ptr->next;
     }
