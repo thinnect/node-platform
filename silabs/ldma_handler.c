@@ -10,7 +10,8 @@
 
 #define SIZE_OF_ARRAY(arr) (sizeof(arr))/sizeof(arr[0])
 
-static volatile ldma_handler_conf_t m_head;
+static volatile ldma_handler_conf_t m_head = {0xFF, NULL, 0, 0, NULL};
+
 
 void LDMA_IRQHandler (void)
 {
@@ -21,17 +22,18 @@ void LDMA_IRQHandler (void)
 		//err1("ldma if");
 	}
 
-	LDMA_IntClear(pending);
+
 
     ldma_handler_conf_t* ptr = &m_head;
     while(ptr != NULL)
     {
-        if ( pending & (1<<ptr->channel) )
+        if ( pending & (1 << ptr->channel) )
 	    {
             osThreadFlagsSet(ptr->thrd, ptr->signal);
 	    }
         ptr = ptr->next;
     }
+    LDMA_IntClear(pending);
 }
 
 void append_to_ldma_stored_configuration(ldma_handler_conf_t * newconf)

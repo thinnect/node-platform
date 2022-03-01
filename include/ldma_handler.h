@@ -4,10 +4,10 @@
 #include "cmsis_os2.h"
 
 typedef struct {
-    int channel;
+    uint32_t channel;
     osThreadId_t thrd;
-    int name;
-    int signal;
+    uint32_t name;
+    uint32_t signal;
     struct ldma_handler_conf_t* next;
 } ldma_handler_conf_t;
 

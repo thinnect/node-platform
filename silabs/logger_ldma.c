@@ -230,7 +230,7 @@ static void ldma_thread (void* argument)
 
 		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
-		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE || flags & LOGGER_THREAD_FLAG_NEW_DATA)
+		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE )
 		{
 
 			busy = false;
@@ -273,7 +273,7 @@ int logger_ldma_init ()
 
 		m_ldma_handler_conf.channel = LOGGER_LDMA_CHANNEL;
 		m_ldma_handler_conf.signal = LOGGER_THREAD_FLAG_LDMA_DONE;
-		m_ldma_handler_conf.thrd = &m_ldma_thread;
+		m_ldma_handler_conf.thrd = m_ldma_thread;
 		m_ldma_handler_conf.name = 69;
 		m_ldma_handler_conf.next = NULL;
 		append_to_ldma_stored_configuration(&m_ldma_handler_conf);
