@@ -863,7 +863,7 @@ static void radio_send_message (comms_msg_t * msg)
     {
         rslt = RAIL_StartCcaCsmaTx(m_rail_handle, m_radio_channel_current, 0, &csmaConf, NULL);
     }
-    debug1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
+    err1("snd %04"PRIX16"->%04"PRIX16"[%02"PRIX8"](%"PRIx8":%"PRIu8")=%d %p l:%d",
            src, dst, amid, m_radio_tx_num, m_csma_retries, rslt, msg, total);
 
     if (rslt == RAIL_STATUS_NO_ERROR)
