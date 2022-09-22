@@ -1,3 +1,4 @@
+
 /**
  * Driver for GPIO multiplexer PCA9536 from Texas Instruments
  *
@@ -11,6 +12,10 @@
 #define IO1 	1
 #define IO2 	2
 #define IO3 	3
+#define IO4     4
+#define IO5     5
+#define IO6     6
+#define IO7     7
 
 #define PCA_DEVICE_ADDR      0x41
 #define PCA_INPUT_PORT_REG   0x00
@@ -22,8 +27,9 @@
  * Configure IO pins
  *
  * @param direction IO direction, 1 - input, 0 - output
+ * @param dev_addr Device address on I2C bus.
  */
-void pca9536_init(uint8_t direction);
+void pca9536_init(uint8_t direction, uint8_t dev_addr);
 
 /**
  * Set output pin high
