@@ -32,7 +32,23 @@ void mcu_dataflash_init (void)
 {
 	debug1("init");
 	m_mcu_dataflash_mutex = platform_mutex_new("mcuf");
+	if (NULL == m_mcu_dataflash_mutex)
+	{
+		err1("NoMutex!");
+	}
+	else
+	{
+		debug1("mtx1:%p", m_mcu_dataflash_mutex);
+	}
 	m_mcu_dataflash_lock_mutex = platform_mutex_new("mcufl");
+	if (NULL == m_mcu_dataflash_lock_mutex)
+	{
+		err1("NoMutex!");
+	}
+	else
+	{
+		debug1("mtx2:%p", m_mcu_dataflash_lock_mutex);
+	}
 	debug1("initd");
 }
 
@@ -192,10 +208,12 @@ void mcu_dataflash_lock ()
 {
 	debug4("lck");
 	platform_mutex_acquire(m_mcu_dataflash_lock_mutex);
+	debug4("lckd");
 }
 
 void mcu_dataflash_unlock ()
 {
 	debug4("ulck");
 	platform_mutex_release(m_mcu_dataflash_lock_mutex);
+	debug4("ulckd");
 }
