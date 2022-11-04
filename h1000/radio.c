@@ -1419,7 +1419,7 @@ static void handle_radio_tx (uint32_t flags)
             {
                 err1("TIMEOUT %d", passed);
                 osDelay(1000);
-                HAL_ENTER_CRITICAL_SECTION();
+                // HAL_ENTER_CRITICAL_SECTION();
                 // while(1);
 
                 signal_send_done(COMMS_ETIMEOUT);
@@ -1659,8 +1659,12 @@ static void radio_task (void* arg)
         // If an exception has occurred and RAIL is broken ---------------------
         if (flags & RDFLG_RADIO_RESTART)
         {
-           // debug1("restart");
-            zb_hw_stop();
+            warn1("restart");
+            //zb_hw_stop();
+
+            hal_rfphy_init();
+            zb_hw_timing ();
+            rf_setRxMode(MAX_RX_TIMEOUT);
 
             // If sending, cancel and notify user
             if (NULL != radio_msg_sending)
