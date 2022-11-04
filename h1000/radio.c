@@ -1615,7 +1615,7 @@ static void handle_radio_events (uint32_t flags)
 		
     if (flags & RDFLG_SAME_SEQNUM)
     {
-        warn1("same sequence number: %02X", m_same_seqNum);
+        debug1("same seq nr: %02X", m_same_seqNum);
     }
 
     // if ((flags & RDFLG_RAIL_TXACK_SENT) || (flags & RDFLG_RAIL_RX_SUCCESS))
