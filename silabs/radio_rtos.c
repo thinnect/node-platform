@@ -930,6 +930,10 @@ static void radio_send_message (comms_msg_t * msg)
 
     debug1("rdelay %d", m_rail_send_timestamp - rail_evt_timestamp);
 
+    debugb3("Tx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" len:%"PRIu8":",
+            &(buffer[12]), comms_get_payload_length(iface, msg),
+            amid, src, dst, comms_get_payload_length(iface, msg));
+
     if (rslt == RAIL_STATUS_NO_ERROR)
     {
         osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
