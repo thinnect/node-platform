@@ -135,6 +135,7 @@ bool spi_flash_resume(void)
         }
     }
 
+    err1("cannot wake flash!");
     return false;
 }
 
