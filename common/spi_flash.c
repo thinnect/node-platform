@@ -7,6 +7,7 @@
  */
 #include "spi_flash.h"
 #include "retargetspi.h"
+#include "cmsis_os2.h"
 #include <stdio.h>
 
 #include "loglevels.h"
@@ -67,7 +68,7 @@ bool spi_flash_init(uint32_t flash_size)
             osDelay(1000);
         }
         PLATFORM_HardReset(); // A hard-reset may help on some boards
-        return;
+        return false;
     }
 
 #ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
