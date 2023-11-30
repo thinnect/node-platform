@@ -29,19 +29,10 @@ static fs_driver_t m_spi_fs_driver;
 #define APPLICATION_FILESYSTEM_NUMBER 0
 
 /**
- * Read flash chip JEDEC identifier and print it out.
- * Initialize the spi_flash module.
- * Initialize filesystem to access a specific area of flash.
- * Start the filesystem module.
+ * Read flash chip JEDEC identifier and return flash size
  */
-void basic_rtos_filesystem_setup ()
+uint32_t get_flash_size (void)
 {
-    // SPI for dataflash
-    RETARGET_SpiInit();
-
-    // Wake flash from deep sleep
-    spi_flash_resume();
-
     // Get dataflash chip ID
     uint8_t jedec[3] = {0};
     uint32_t flash_size;
@@ -62,9 +53,28 @@ void basic_rtos_filesystem_setup ()
         }
         PLATFORM_HardReset(); // A hard-reset may help on some boards
     }
+    else
+    {
+        return flash_size;
+    }
+}
+
+/**
+ * Read flash chip JEDEC identifier and print it out.
+ * Initialize the spi_flash module.
+ * Initialize filesystem to access a specific area of flash.
+ * Start the filesystem module.
+ */
+void basic_rtos_filesystem_setup (void)
+{
+    // SPI for dataflash
+    RETARGET_SpiInit();
+
+    // Wake flash from deep sleep
+    spi_flash_resume();
 
     // Initialize flash subsystem
-    spi_flash_init(flash_size);
+    spi_flash_init(get_flash_size());
 
     watchdog_feed();
 

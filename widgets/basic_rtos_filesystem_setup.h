@@ -10,6 +10,7 @@
 #ifndef BASIC_RTOS_FILESYSTEM_SETUP_H_
 #define BASIC_RTOS_FILESYSTEM_SETUP_H_
 
-void basic_rtos_filesystem_setup ();
+void basic_rtos_filesystem_setup (void);
+uint32_t get_flash_size (void);
 
 #endif//BASIC_RTOS_FILESYSTEM_SETUP_H_
