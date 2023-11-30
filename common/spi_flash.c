@@ -32,6 +32,34 @@ static int spi_flash_sleeping = 1;
     static uint32_t m_suspend_timestamp; // When the flash was last suspended
 #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
+/**
+ * Read flash chip JEDEC identifier and return flash size
+ */
+uint32_t get_flash_size (void)
+{
+    // Get dataflash chip ID
+    uint8_t jedec[3] = {0};
+    uint32_t flash_size = 0;
+
+    RETARGET_SpiTransferHalf(0, "\x9F", 1, jedec, 3);
+    flash_size = (1 << jedec[2]);
+
+    info1("Manufacturer ID: %02X", jedec[0]);
+    info1("Mem Type: %02X", jedec[1]);
+    info1("Mem Size: %u bytes", flash_size);
+
+    if ((0x00 == jedec[0])||(0xFF == jedec[0])) // Invalid ID, flash not responsive
+    {
+        for (uint8_t i = 0; i < 10; i++)
+        {
+            err1("SPI flash");
+        }
+        PLATFORM_HardReset(); // A hard-reset may help on some boards
+    }
+    return flash_size;
+}
+
+
 bool spi_flash_init(uint32_t flash_size)
 {
     if (FLASH_SIZE_64MBIT == flash_size)
@@ -65,7 +93,6 @@ bool spi_flash_init(uint32_t flash_size)
         for (uint8_t i = 0; i < 10; i++)
         {
             err1("Unknown flash size!");
-            osDelay(1000);
         }
         PLATFORM_HardReset(); // A hard-reset may help on some boards
         return false;

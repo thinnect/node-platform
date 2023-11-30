@@ -66,4 +66,9 @@ void spi_flash_lock();
  */
 void spi_flash_unlock();
 
+/**
+ * Get flash size from JEDEC
+ */
+uint32_t get_flash_size (void);
+
 #endif//_SPI_FLASH_H_

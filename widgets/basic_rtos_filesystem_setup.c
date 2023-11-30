@@ -29,38 +29,6 @@ static fs_driver_t m_spi_fs_driver;
 #define APPLICATION_FILESYSTEM_NUMBER 0
 
 /**
- * Read flash chip JEDEC identifier and return flash size
- */
-uint32_t get_flash_size (void)
-{
-    // Get dataflash chip ID
-    uint8_t jedec[3] = {0};
-    uint32_t flash_size;
-
-    RETARGET_SpiTransferHalf(0, "\x9F", 1, jedec, 3);
-    flash_size = (1 << jedec[2]);
-
-    info1("Manufacturer ID: %02X", jedec[0]);
-    info1("Mem Type: %02X", jedec[1]);
-    info1("Mem Size: %u bytes", flash_size);
-
-    if ((0x00 == jedec[0])||(0xFF == jedec[0])) // Invalid ID, flash not responsive
-    {
-        for (uint8_t i = 0; i < 10; i++)
-        {
-            err1("SPI flash");
-            osDelay(1000);
-        }
-        PLATFORM_HardReset(); // A hard-reset may help on some boards
-    }
-    else
-    {
-        return flash_size;
-    }
-}
-
-/**
- * Read flash chip JEDEC identifier and print it out.
  * Initialize the spi_flash module.
  * Initialize filesystem to access a specific area of flash.
  * Start the filesystem module.
