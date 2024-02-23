@@ -107,6 +107,8 @@ struct radio_queue_element
 
 #define RDFLGS_ALL                (0x7FFFFFFF)
 
+#define RX_QUEUE_SIZE             20
+
 typedef enum RadioState
 {
     ST_UNINITIALIZED,
@@ -216,6 +218,10 @@ static osTimerId_t m_send_timeout_timer;
 static osTimerId_t m_resend_timer;
 // -----------------------------------------------------------------------------
 
+static uint32_t m_hold_cnt = 0;
+static uint32_t m_release_cnt = 0;
+static uint32_t m_busy_qfull_cnt = 0;
+static uint32_t m_busy_hndl_inv_cnt = 0;
 
 static void radio_rail_rfready_cb(RAIL_Handle_t m_rail_handle)
 {
@@ -293,7 +299,7 @@ comms_layer_t* radio_init (uint8_t channel, uint16_t pan_id, uint16_t address)
         radio_msg_queue_free = &radio_msg_queue_memory[i];
     }
 
-    m_rx_queue = osMessageQueueNew(10, sizeof(RAIL_RxPacketHandle_t), NULL);
+    m_rx_queue = osMessageQueueNew(RX_QUEUE_SIZE, sizeof(RAIL_RxPacketHandle_t), NULL);
     if (m_rx_queue == NULL)
     {
         err1("rxq");
@@ -1109,6 +1115,10 @@ static void handle_radio_rx (uint32_t flags)
                     warnb1("rst", &rst, sizeof(RAIL_Status_t));
                     sys_panic("release");
                 }
+                else
+                {
+                    ++m_release_cnt;
+                }
 
                 uint16_t seqTime = (uint16_t)(osKernelGetTickCount() >> 10);
                 uint16_t source = ((uint16_t)buffer[8] << 0) | ((uint16_t)buffer[9] << 8);
@@ -1347,13 +1357,31 @@ static void handle_radio_events ()
     {
         uint8_t rxb __attribute__((unused));
         uint8_t rxo __attribute__((unused));
+
+        uint8_t rxbq __attribute__((unused));
+        uint8_t rxbh __attribute__((unused));
+        uint32_t rls_cnt __attribute__((unused));
+        uint32_t hld_cnt __attribute__((unused));
+
         CORE_irqState_t irqState = CORE_EnterCritical();
-        rxb = rx_busy;
+        // rxb = rx_busy;
         rxo = rx_overflow;
         rx_busy = 0;
         rx_overflow = 0;
+
+        rxbq = m_busy_qfull_cnt;
+        m_busy_qfull_cnt = 0;
+        rxbh = m_busy_hndl_inv_cnt;
+        m_busy_hndl_inv_cnt = 0;
+
+        rls_cnt = m_release_cnt;
+        m_release_cnt = 0;
+        hld_cnt = m_hold_cnt;
+        m_hold_cnt = 0;
+
         CORE_ExitCritical(irqState);
-        warn1("rx b:%"PRIu8" o:%"PRIu8, rxb, rxo);
+        // warn1("rx b:%"PRIu8" o:%"PRIu8, rxb, rxo);
+        warn1("rx bq:%"PRIu8" bh:%"PRIu8" of:%"PRIu8 " hld:%u rls:%u", rxbq, rxbh, rxo, hld_cnt, rls_cnt);
     }
 
     // RX failure handling -----------------------------------------------------
@@ -1502,6 +1530,10 @@ static void stop_radio_now ()
         {
             warnb1("rst", &rst, sizeof(RAIL_Status_t));
             sys_panic("release");
+        }
+        else
+        {
+            ++m_release_cnt;
         }
     }
 
@@ -1661,6 +1693,7 @@ static void radio_rail_event_cb (RAIL_Handle_t m_rail_handle, RAIL_Events_t even
             RAIL_RxPacketHandle_t rxh = RAIL_HoldRxPacket(m_rail_handle);
             if (rxh != RAIL_RX_PACKET_HANDLE_INVALID)
             {
+                ++m_hold_cnt;
                 RAIL_RxPacketInfo_t pi;
                 if (RAIL_GetRxPacketInfo(m_rail_handle, rxh, &pi) == rxh)
                 {
@@ -1675,7 +1708,16 @@ static void radio_rail_event_cb (RAIL_Handle_t m_rail_handle, RAIL_Events_t even
                             {
                                 osThreadFlagsSet(m_radio_thread_id, RDFLG_RAIL_SEND_DONE);
                             }
-                            RAIL_ReleaseRxPacket(m_rail_handle, rxh);
+                            RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
+                            if (rst != RAIL_STATUS_NO_ERROR)
+                            {
+                                warnb1("rst", &rst, sizeof(RAIL_Status_t));
+                                sys_panic("release");
+                            }
+                            else
+                            {
+                                ++m_release_cnt;
+                            }
                             rxh = RAIL_RX_PACKET_HANDLE_INVALID;
                         }
                     }
@@ -1686,8 +1728,18 @@ static void radio_rail_event_cb (RAIL_Handle_t m_rail_handle, RAIL_Events_t even
                 {
                     if (osOK != osMessageQueuePut(m_rx_queue, &rxh, 0, 0))
                     {
-                        RAIL_ReleaseRxPacket(m_rail_handle, rxh);
+                        RAIL_Status_t rst = RAIL_ReleaseRxPacket(m_rail_handle, rxh);
+                        if (rst != RAIL_STATUS_NO_ERROR)
+                        {
+                            warnb1("rst", &rst, sizeof(RAIL_Status_t));
+                            sys_panic("release");
+                        }
+                        else
+                        {
+                            ++m_release_cnt;
+                        }
                         rx_busy++;
+                        ++m_busy_qfull_cnt;
                         osThreadFlagsSet(m_radio_thread_id, RDFLG_RAIL_RX_BUSY);
                     }
                     else
@@ -1699,6 +1751,10 @@ static void radio_rail_event_cb (RAIL_Handle_t m_rail_handle, RAIL_Events_t even
             else
             {
                 rx_busy++;
+                // debug!!!
+                ++m_busy_hndl_inv_cnt;                
+                osThreadFlagsSet(m_radio_thread_id, RDFLG_RAIL_RX_BUSY);
+                // end of debug
             }
             unhandled = false;
         }
