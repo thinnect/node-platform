@@ -694,6 +694,7 @@ static comms_error_t radio_start (comms_layer_iface_t * iface, comms_status_chan
     comms_error_t err = COMMS_SUCCESS;
     if (iface != (comms_layer_iface_t *)&m_radio_iface)
     {
+        err1("COMMS_EINVAL");
         return COMMS_EINVAL;
     }
 
@@ -701,10 +702,12 @@ static comms_error_t radio_start (comms_layer_iface_t * iface, comms_status_chan
 
     if (ST_RUNNING == m_state)
     {
+        warn1("COMMS_ALREADY");
         err = COMMS_ALREADY;
     }
     else if (ST_OFF != m_state)
     {
+        err1("COMMS_EBUSY");
         err = COMMS_EBUSY;
     }
     else
@@ -726,6 +729,7 @@ static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change
     comms_error_t err = COMMS_SUCCESS;
     if (iface != (comms_layer_iface_t *)&m_radio_iface)
     {
+        err1("COMMS_EINVAL");
         return COMMS_EINVAL;
     }
 
@@ -733,10 +737,12 @@ static comms_error_t radio_stop (comms_layer_iface_t* iface, comms_status_change
 
     if (ST_OFF == m_state)
     {
+        warn1("COMMS_ALREADY");
         err = COMMS_ALREADY;
     }
     else if (ST_RUNNING != m_state)
     {
+        err1("COMMS_EBUSY");
         err = COMMS_EBUSY;
     }
     else
@@ -1461,6 +1467,7 @@ static void start_radio_now ()
     m_state = ST_RUNNING;
     osMutexRelease(m_radio_mutex);
 
+    debug3("RdStrtD");
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STARTED, m_state_change_user);
 }
 
@@ -1545,6 +1552,7 @@ static void stop_radio_now ()
     m_state = ST_OFF;
     osMutexRelease(m_radio_mutex);
 
+    debug3("RdStpD");
     m_state_change_cb((comms_layer_t *)&m_radio_iface, COMMS_STOPPED, m_state_change_user);
 }
 
