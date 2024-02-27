@@ -21,6 +21,7 @@
 #include "pa_conversions_efr32.h"
 #include "pa_curves_efr32.h"
 #include "sleep.h"
+#include "watchdog.h"
 
 #ifdef RAIL_USE_CUSTOM_CONFIG
 // rail_config can be generated with SimplicityStudio, but it is not commonly
@@ -946,6 +947,8 @@ static void radio_send_message (comms_msg_t * msg)
             &(buffer[12]), comms_get_payload_length(iface, msg),
             amid, src, dst, comms_get_payload_length(iface, msg));
 
+    watchdog_feed();
+
     if (rslt == RAIL_STATUS_NO_ERROR)
     {
         osTimerStart(m_send_timeout_timer, RADIO_MAX_SEND_TIME_MS);
@@ -1034,6 +1037,8 @@ static void signal_send_done (comms_error_t err)
     {
         warn3("slow tx %"PRIu32, qtime);
     }
+    
+    watchdog_feed();
 
     logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
