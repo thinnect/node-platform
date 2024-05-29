@@ -38,7 +38,7 @@
 //  @param *voltage_mV - pointer where to store voltage reading
 //  @return true if voltage reading was successful
 // ----------------------------------------------------------------------------
-bool voltage_reader (GPIO_Port_TypeDef port, 
+bool voltage_reader (GPIO_Port_TypeDef port,
                      unsigned int pin,
                      IADC_PosInput_t pos_inp_port_pin,
                      uint32_t ref_vcc_voltage,
@@ -72,7 +72,7 @@ bool voltage_reader (GPIO_Port_TypeDef port,
     CMU_ClockEnable(cmuClock_IADCCLK, true);
 
     // Modify init structs and initialize
-    init.warmup = iadcWarmupNormal;
+    init.warmup = iadcWarmupKeepWarm;
 
     // Set the HFSCLK prescale value here
     init.srcClkPrescale = IADC_calcSrcClkPrescale(IADC0, CLK_SRC_ADC_FREQ, 0);
@@ -89,7 +89,7 @@ bool voltage_reader (GPIO_Port_TypeDef port,
                                                                        iadcCfgModeNormal,
                                                                        init.srcClkPrescale);
     // Single initialization
-    initSingle.dataValidLevel = _IADC_SCANFIFOCFG_DVL_VALID1;
+    initSingle.dataValidLevel = IADC_SCANFIFOCFG_DVL_VALID1;
     initSingle.showId = true;
     initSingle.triggerAction = iadcTriggerActionOnce;
     initSingleInput.posInput = pos_inp_port_pin;
@@ -101,7 +101,12 @@ bool voltage_reader (GPIO_Port_TypeDef port,
     // Initialize Scan
     IADC_initSingle(IADC0, &initSingle, &initSingleInput);
 
-    // Allocate the analog bus for ADC0 inputs
+    // Allocate the analog bus for IADC0 inputs
+    GPIO->ABUSALLOC |= GPIO_ABUSALLOC_AODD0_ADC0;
+    GPIO->ABUSALLOC |= GPIO_ABUSALLOC_AEVEN0_ADC0;
+    GPIO->BBUSALLOC |= GPIO_BBUSALLOC_BODD0_ADC0;
+    GPIO->BBUSALLOC |= GPIO_BBUSALLOC_BEVEN0_ADC0;
+    GPIO->CDBUSALLOC |= GPIO_CDBUSALLOC_CDODD0_ADC0;
     GPIO->CDBUSALLOC |= GPIO_CDBUSALLOC_CDEVEN0_ADC0;
 
     //debug1("pop %lX", IADC0->SINGLE);
@@ -126,7 +131,7 @@ bool voltage_reader (GPIO_Port_TypeDef port,
         uint32_t ints = IADC_getInt(IADC0);
         debug1("end st:%"PRIX32" c:%"PRIu32" IF:%"PRIX32, status, count, ints);
 
-        if((count > 1000000)||(IADC_IF_POLARITYERR & ints))
+        if((count > 1000000)||(IADC_IF_POLARITYERR & ints)||(IADC_IF_PORTALLOCERR & ints))
         {
             err1("c:%"PRIu32" IF:%"PRIX32, count, ints);
         }
@@ -136,11 +141,17 @@ bool voltage_reader (GPIO_Port_TypeDef port,
             debug1("smpl %lu %u", sample.data, sample.id);
             sum += sample.data;
             num++;
+            IADC_clearInt(IADC0, ints);
         }
     }
 
     // Deallocate the analog bus
+    GPIO->ABUSALLOC &= ~(GPIO_ABUSALLOC_AODD0_ADC0);
+    GPIO->ABUSALLOC &= ~(GPIO_ABUSALLOC_AEVEN0_ADC0);
+    GPIO->BBUSALLOC &= ~(GPIO_BBUSALLOC_BODD0_ADC0);
+    GPIO->BBUSALLOC &= ~(GPIO_BBUSALLOC_BEVEN0_ADC0);
     GPIO->CDBUSALLOC &= ~(GPIO_CDBUSALLOC_CDEVEN0_ADC0);
+    GPIO->CDBUSALLOC &= ~(GPIO_CDBUSALLOC_CDODD0_ADC0);
 
     IADC_reset(IADC0);
     CMU_ClockEnable(cmuClock_IADCCLK, false);
