@@ -947,7 +947,7 @@ static void radio_send_message (comms_msg_t * msg)
             &(buffer[12]), comms_get_payload_length(iface, msg),
             amid, src, dst, comms_get_payload_length(iface, msg));
 
-    watchdog_feed();
+    // watchdog_feed();
 
     if (rslt == RAIL_STATUS_NO_ERROR)
     {
