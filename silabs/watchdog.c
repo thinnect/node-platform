@@ -97,6 +97,8 @@ WDOG_PeriodSel_TypeDef wdog_periodSelect(uint32_t timeout_ms) {
 
 
 bool watchdog_enable(uint32_t timeout_ms) {
+
+    debug1("Enable: %u");
     WDOG_PeriodSel_TypeDef per;
 #ifdef EFR32_SERIES1
     CMU_ClockEnable(cmuClock_CORELE, true);
@@ -111,6 +113,7 @@ bool watchdog_enable(uint32_t timeout_ms) {
     wdogInit.em2Run = true;
 
     per = wdog_periodSelect(timeout_ms);
+    debug1("wdog per:%u", per);
     if (per >= wdogPeriod_9) {
         wdogInit.perSel = per;
     } else {

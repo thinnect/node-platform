@@ -20,10 +20,11 @@ struct spi_flash_partitions_struct
 
 /**
  * Initialize the SPI flash component.
+ * @param flash_size - flash size in bytes, read from flash chip
  * @return true if flash working,
  *         false intialization failed - flash did not respond.
  */
-bool spi_flash_init(void);
+bool spi_flash_init(uint32_t flash_size);
 
 /**
  * Suspend the SPI flash to save power, resume is automatic.
@@ -64,5 +65,10 @@ void spi_flash_lock();
  * Unlock the SPI flash after access.
  */
 void spi_flash_unlock();
+
+/**
+ * Get flash size from JEDEC
+ */
+uint32_t get_flash_size (void);
 
 #endif//_SPI_FLASH_H_
