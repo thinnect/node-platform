@@ -1038,7 +1038,7 @@ static void signal_send_done (comms_error_t err)
         warn3("slow tx %"PRIu32, qtime);
     }
     
-    watchdog_feed();
+    // watchdog_feed();
 
     logger(err==COMMS_SUCCESS?LOG_INFO3:LOG_WARN3,
           "snt %p e:%d t:(%"PRIu32")(%"PRIu32")",
