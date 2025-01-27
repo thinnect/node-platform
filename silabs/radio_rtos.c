@@ -958,6 +958,7 @@ static void radio_send_message (comms_msg_t * msg)
         RAIL_Idle(m_rail_handle, RAIL_IDLE_FORCE_SHUTDOWN, 1);
         RAIL_StartRx(m_rail_handle, m_radio_channel_current, NULL);
         osThreadFlagsSet(m_radio_thread_id, RDFLG_RADIO_SEND_FAIL);
+        err1("SendFail!");
     }
 }
 
@@ -1261,6 +1262,7 @@ static void handle_radio_tx (uint32_t flags)
                 comms_ack_received((comms_layer_t *)&m_radio_iface, radio_msg_sending->msg);
             }
             signal_send_done(COMMS_SUCCESS);
+            debug3("SndD");
         }
         // Ack was not received ------------------------------------------------
         else if (flags & RDFLG_RAIL_RXACK_TIMEOUT)
@@ -1319,6 +1321,7 @@ static void handle_radio_tx (uint32_t flags)
                 else
                 {
                     signal_send_done(COMMS_EBUSY);
+                    debug3("RdBsy");
                 }
             }
         }
