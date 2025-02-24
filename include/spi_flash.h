@@ -44,7 +44,7 @@ void spi_flash_normalize(void);
 void spi_flash_mass_erase(void);
 
 int32_t spi_flash_read(int partition, uint32_t addr, uint32_t size, uint8_t * dst);
-int32_t spi_flash_write(int partition, uint32_t addr, uint32_t size, uint8_t * src);
+int32_t spi_flash_write(int partition, uint32_t addr, uint32_t size, const uint8_t * src);
 int32_t spi_flash_erase(int partition, uint32_t addr, uint32_t size);
 int32_t spi_flash_size(int partition);
 int32_t spi_flash_erase_size(int partition);

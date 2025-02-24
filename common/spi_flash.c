@@ -203,7 +203,7 @@ int32_t spi_flash_read(int partition, uint32_t addr, uint32_t size, uint8_t * ds
 	return size;
 }
 
-int32_t spi_flash_write(int partition, uint32_t addr, uint32_t size, uint8_t * src)
+int32_t spi_flash_write(int partition, uint32_t addr, uint32_t size, const uint8_t * src)
 {
 	static uint8_t buffer[260];
 	uint32_t len;
@@ -322,4 +322,3 @@ void spi_flash_unlock()
 {
 	RETARGET_SpiTransactionUnlock(SPI_FLASH_CS);
 }
-

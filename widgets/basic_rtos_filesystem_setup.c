@@ -31,7 +31,7 @@ static fs_driver_t m_spi_fs_driver;
  * Initialize filesystem to access a specific area of flash.
  * Start the filesystem module.
  */
-void basic_rtos_filesystem_setup ()
+bool basic_rtos_filesystem_setup ()
 {
     // SPI for dataflash
     RETARGET_SpiInit();
@@ -70,5 +70,18 @@ void basic_rtos_filesystem_setup ()
 
     watchdog_feed();
     fs_start(); // This can take several minutes if flash is uninitialized or corrupt.
-    watchdog_feed();
+
+    uint32_t fswaits = 0;
+    while (! fs_ready())
+    {
+        osDelay(1000);
+        watchdog_feed();
+        info1("fs mounting...%d", fswaits);
+        if (++fswaits > 30*6) // 30 minutes
+        {
+            err1("fs timeout");
+            return false;
+        }
+    }
+    return true;
 }

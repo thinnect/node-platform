@@ -10,6 +10,8 @@
 #ifndef BASIC_RTOS_FILESYSTEM_SETUP_H_
 #define BASIC_RTOS_FILESYSTEM_SETUP_H_
 
-void basic_rtos_filesystem_setup ();
+#include <stdbool.h>
+
+bool basic_rtos_filesystem_setup (void);
 
 #endif//BASIC_RTOS_FILESYSTEM_SETUP_H_
