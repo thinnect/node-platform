@@ -215,9 +215,13 @@ void spi_flash_wait_wel(void)
 
 void spi_flash_mass_erase(void)
 {
+    debug1("Flash resume");
     spi_flash_resume();
+    debug1("Flash wait busy");
     spi_flash_wait_busy();
+    debug1("Flash cmd 0x06");
     spi_flash_cmd(0x06);
+    debug1("Flash wait wel");
     spi_flash_wait_wel();
     spi_flash_cmd(0xC7);
     spi_flash_wait_busy();

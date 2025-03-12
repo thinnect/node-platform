@@ -46,8 +46,9 @@ void basic_rtos_filesystem_setup (void)
 
     watchdog_feed();
 
-    // debug1("Mass erase!");
-    // spi_flash_mass_erase();
+    debug1("Mass erase!");
+    osDelay(5000);
+    spi_flash_mass_erase();
 
     m_spi_fs_driver.read = spi_flash_read;
     m_spi_fs_driver.write = spi_flash_write;
@@ -58,9 +59,11 @@ void basic_rtos_filesystem_setup (void)
     m_spi_fs_driver.lock = spi_flash_lock;
     m_spi_fs_driver.unlock = spi_flash_unlock;
 
+    debug1("FS init");
     fs_init(APPLICATION_FILESYSTEM_NUMBER, APPLICATION_PARTITION_NUMBER, &m_spi_fs_driver);
 
     watchdog_feed();
+    debug1("FS start");
     fs_start(); // This can take several minutes if flash is uninitialized or corrupt.
     watchdog_feed();
 }
