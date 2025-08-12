@@ -28,6 +28,7 @@ void RETARGET_SpiInit() {
 	USART_InitSync_TypeDef init = USART_INITSYNC_DEFAULT;
 	init.msbf = true;
 	init.enable = usartDisable;
+	init.baudrate = 115200;
 
 	spi_mutex = platform_mutex_new("spi");
 	spi_transaction_mutex_cs0 = platform_mutex_new("spi_cs0");

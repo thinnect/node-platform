@@ -15,6 +15,8 @@
 #include "retargetspi.h"
 #include "spi_flash.h"
 #include "fs.h"
+#include "em_usart.h"
+#include "retargetspiconfig.h"
 
 #include "watchdog.h"
 
@@ -37,6 +39,8 @@ void basic_rtos_filesystem_setup (void)
 {
     // SPI for dataflash
     RETARGET_SpiInit();
+
+	debug1("baudrate:%u", USART_BaudrateGet(RETARGET_SPI_UART));
 
     // Wake flash from deep sleep
     spi_flash_resume();
@@ -63,4 +67,10 @@ void basic_rtos_filesystem_setup (void)
     watchdog_feed();
     fs_start(); // This can take several minutes if flash is uninitialized or corrupt.
     watchdog_feed();
+
+    uint8_t buffer[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+    debugb1("BuffW:", &buffer[0], 16);
+    spi_flash_write(2, 0, 16, &buffer[0]);
+    spi_flash_read(2, 0, 16, &buffer[0]);
+    debugb1("BuffR:", &buffer[0], 16);
 }
