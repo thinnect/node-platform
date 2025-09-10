@@ -943,7 +943,7 @@ static void radio_send_message (comms_msg_t * msg)
 
     debug1("rdelay %d", m_rail_send_timestamp - rail_evt_timestamp);
 
-    debugb3("Tx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" len:%"PRIu8":",
+    debugb2("Tx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" len:%"PRIu8":",
             &(buffer[12]), comms_get_payload_length(iface, msg),
             amid, src, dst, comms_get_payload_length(iface, msg));
 
@@ -1213,8 +1213,8 @@ static void handle_radio_rx (uint32_t flags)
                                 rts,
                                 packetDetails.rssi, lqi, plen);
 
-                        debug2("Rx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" rssi:%"PRIi8"",
-                                buffer[12],
+                        debugb2("Rx[%02"PRIX8"] %04"PRIX16"->%04"PRIX16" rssi:%"PRIi8"",
+                                &(buffer[12]), plen, amid,
                                 source, dest,
                                 packetDetails.rssi);
 
@@ -1439,7 +1439,7 @@ static void start_radio_now ()
 
     SLEEP_SleepBlockBegin(sleepEM2);
     m_sleep_time += osKernelGetTickCount() - m_stop_timestamp;
-    debug2("sleep %"PRIu32"t %"PRIu32"r", osKernelGetTickCount() - m_stop_timestamp,
+    debug3("sleep %"PRIu32"t %"PRIu32"r", osKernelGetTickCount() - m_stop_timestamp,
                                           RAIL_GetTime() - m_stop_railtime);
 
     if(RAIL_STATUS_NO_ERROR != radio_rail_configure(m_rail_handle))
