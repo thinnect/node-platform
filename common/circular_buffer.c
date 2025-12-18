@@ -53,7 +53,7 @@ bool circular_buffer_u8_pop(circular_buffer_u8_t * cb, uint8_t * value)
     }
 
     int8_t next = cb->tail + 1;
-    if (next > cb->maxlen)
+    if (next == cb->maxlen)
     {
         next = 0;
     }
