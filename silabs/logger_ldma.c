@@ -27,6 +27,7 @@
 #include "dmadrv.h"
 #else
 #include "em_ldma.h"
+#include "ldma_handler.h"
 #endif//LOGGER_LDMA_DMADRV
 
 #include "sleep.h"
@@ -60,6 +61,7 @@ static osThreadId_t m_ldma_thread;
 static osMutexId_t m_log_mutex;
 static bool m_ldma_idle;
 static bool m_uart_active;
+static ldma_handler_conf_t m_ldma_handler_conf;
 
 static unsigned int m_dma_channel = LOGGER_LDMA_CHANNEL;
 
@@ -68,13 +70,15 @@ static unsigned int m_dma_channel = LOGGER_LDMA_CHANNEL;
 static bool dmadrv_callback (unsigned int channel, unsigned int sequenceNo, void * data)
 {
 	osThreadFlagsSet(m_ldma_thread, LOGGER_THREAD_FLAG_LDMA_DONE);
+	//PLATFORM_LedsSet(PLATFORM_LedsGet()^1);
 	return false;
 }
 #else
+/*
 void LDMA_IRQHandler (void)
 {
 	uint32_t pending = LDMA_IntGet();
-
+	PLATFORM_LedsSet(PLATFORM_LedsGet()^1);
 	while (pending & LDMA_IF_ERROR)
 	{
 		sys_panic("ldma if");
@@ -87,6 +91,7 @@ void LDMA_IRQHandler (void)
 		osThreadFlagsSet(m_ldma_thread, LOGGER_THREAD_FLAG_LDMA_DONE);
 	}
 }
+*/
 #endif//LOGGER_LDMA_DMADRV
 
 
@@ -225,12 +230,14 @@ static void ldma_thread (void* argument)
 
 		while (osOK != osMutexAcquire(m_log_mutex, osWaitForever));
 
-		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE)
+		if (flags & LOGGER_THREAD_FLAG_LDMA_DONE )
 		{
+
 			busy = false;
 			m_buf_full = false;
 			m_buf_start = m_buf_pos;
 		}
+
 
 		if ((m_buf_start >= LOGGER_LDMA_BUFFER_LENGTH)||(m_buf_end >= LOGGER_LDMA_BUFFER_LENGTH))
 		{
@@ -262,6 +269,14 @@ int logger_ldma_init ()
 			return 1; // should perhaps panic instead
 		}
 	#else
+
+
+		m_ldma_handler_conf.channel = LOGGER_LDMA_CHANNEL;
+		m_ldma_handler_conf.signal = LOGGER_THREAD_FLAG_LDMA_DONE;
+		m_ldma_handler_conf.thrd = m_ldma_thread;
+		m_ldma_handler_conf.name = 69;
+		m_ldma_handler_conf.next = NULL;
+		append_to_ldma_stored_configuration(&m_ldma_handler_conf);
 		LDMA_Init_t initLdma = LDMA_INIT_DEFAULT;
 		initLdma.ldmaInitIrqPriority = LDMA_INTERRUPT_PRIORITY;
 		LDMA_Init(&initLdma);
