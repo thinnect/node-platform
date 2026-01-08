@@ -28,7 +28,7 @@ bool circular_buffer_u8_push(circular_buffer_u8_t * cb, uint8_t value)
     if (next == cb->tail)
     {
         uint8_t ntail = cb->tail + 1;
-        if (ntail > cb->maxlen)
+        if (ntail == cb->maxlen)
         {
             cb->tail = 0;
         }
