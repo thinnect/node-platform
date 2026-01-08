@@ -99,7 +99,15 @@ bool spi_flash_init(uint32_t flash_size)
     }
 
 #ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
-    m_suspend_mutex = osMutexNew(NULL);
+    osMutexId_t mutex = osMutexNew(NULL);
+    if (NULL != mutex)
+    {
+        m_suspend_mutex = mutex;
+    }
+    else
+    {
+        err1("!mutex");
+    }
 #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
     for (int i = 0; i < SPI_FLASH_PARTITIONS_COUNT; i++)
@@ -121,11 +129,18 @@ void spi_flash_suspend(void)
     RETARGET_SpiTransferHalf(SPI_FLASH_CS, "\xB9", 1, NULL, 0);
     spi_flash_sleeping = 1;
 
-    #ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
-    while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
-    m_suspend_timestamp = osCounterGetMilli();
-    osMutexRelease(m_suspend_mutex);
-    #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
+#ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
+    if (NULL != m_suspend_mutex)
+    {
+        while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
+        m_suspend_timestamp = osCounterGetMilli();
+        osMutexRelease(m_suspend_mutex);
+    }
+    else
+    {
+        err1("!mutex");
+    }
+#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
     debug1("slp");
 }
@@ -137,11 +152,18 @@ bool spi_flash_resume(void)
         return true;
     }
 
-    #ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
-    while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
-    m_suspend_time += (osCounterGetMilli() - m_suspend_timestamp);
-    osMutexRelease(m_suspend_mutex);
-    #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
+#ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
+    if (NULL != m_suspend_mutex)
+    {
+        while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
+        m_suspend_time += (osCounterGetMilli() - m_suspend_timestamp);
+        osMutexRelease(m_suspend_mutex);
+    }
+    else
+    {
+        err1("!mutex");
+    }
+#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
     debug1("wake");
 
@@ -171,18 +193,25 @@ uint64_t spi_flash_suspended_time(void)
 {
     uint64_t st = 0;
 
-    #ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
-    while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
-    if (spi_flash_sleeping)
+#ifdef SPI_FLASH_TRACK_SUSPENDED_TIME
+    if (NULL != m_suspend_mutex)
     {
-        st = m_suspend_time + (osCounterGetMilli() - m_suspend_timestamp);
+        while(osOK != osMutexAcquire(m_suspend_mutex, osWaitForever));
+        if (spi_flash_sleeping)
+        {
+            st = m_suspend_time + (osCounterGetMilli() - m_suspend_timestamp);
+        }
+        else
+        {
+            st = m_suspend_time;
+        }
+        osMutexRelease(m_suspend_mutex);
     }
     else
     {
-        st = m_suspend_time;
+        err1("!mutex");
     }
-    osMutexRelease(m_suspend_mutex);
-    #endif//SPI_FLASH_TRACK_SUSPENDED_TIME
+#endif//SPI_FLASH_TRACK_SUSPENDED_TIME
 
     return st;
 }
