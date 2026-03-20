@@ -44,11 +44,11 @@ uint32_t get_flash_size (void)
     RETARGET_SpiTransferHalf(0, "\x9F", 1, jedec, 3);
     flash_size = (1 << jedec[2]);
 
-    info1("Manufacturer ID: %02X", jedec[0]);
-    info1("Mem Type: %02X", jedec[1]);
-    info1("Mem Size: %u bytes", flash_size);
+    info1("ID: %02X", jedec[0]);
+    info1("Type: %02X", jedec[1]);
+    info1("Size: %uB", flash_size);
 
-    if ((0x00 == jedec[0])||(0xFF == jedec[0])) // Invalid ID, flash not responsive
+    if ((0x00 == jedec[0]) || (0xFF == jedec[0])) // Invalid ID, flash not responsive
     {
         for (uint8_t i = 0; i < 10; i++)
         {
@@ -56,9 +56,16 @@ uint32_t get_flash_size (void)
         }
         PLATFORM_HardReset(); // A hard-reset may help on some boards
     }
-    return flash_size;
+    if ((0x1F == jedec[0]) && (0x47 == jedec[1]) && (0x08 == jedec[2]))
+    {
+        // special case for Renesas AT25FF321A flash chip
+        return FLASH_SIZE_32MBIT;
+    }
+    else
+    {
+        return flash_size;
+    }
 }
-
 
 bool spi_flash_init(uint32_t flash_size)
 {
