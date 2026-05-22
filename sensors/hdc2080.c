@@ -50,45 +50,42 @@
 
 /*** Local Function Prototypes ***********************************************/
 
-static int32_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count);
-static int32_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value);
-static int32_t hdc2080_i2c_write_addr(uint8_t addr);
+static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count);
+static int8_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value);
+static int8_t hdc2080_i2c_write_addr(uint8_t addr);
 
 /*** Public API **************************************************************/
 
-int32_t hdc2080_init (void)
+int8_t hdc2080_init (void)
 {
     /* No special init needed except clearing config */
     return hdc2080_i2c_write_data(HDC2080_REG_CONFIG, 0x00U);
 }
 
-int32_t hdc2080_trigger_measurement (void)
+int8_t hdc2080_trigger_measurement (void)
 {
     /* Trigger-on-demand: set TRIGGER bit in MEASUREMENT register */
     return hdc2080_i2c_write_data(HDC2080_REG_MEASUREMENT, HDC2080_CONFIG_TRIGGER_BIT);
 }
 
-int32_t hdc2080_read_manufacturer_id (uint16_t* p_manufacturer_id)
+int8_t hdc2080_read_manufacturer_id (uint16_t* p_manufacturer_id)
 {
     uint8_t low;
     uint8_t high;
     int32_t res;
 
     res = hdc2080_i2c_read(HDC2080_REG_MANUFACTURER_HIGH, &high, 1);
-    debug1("Rd H:%"PRIX8" res:%d", high, res);
-
     if (res != 0)
     {
         return res;
     }
 
     res = hdc2080_i2c_read(HDC2080_REG_MANUFACTURER_LOW, &low, 1);
-    debug1("Rd L:%"PRIX8" res:%d", low, res);
-    *p_manufacturer_id = (high << 8) | low; // manufacturer ID must be 0x4954
+    *p_manufacturer_id = (high << 8) | low;
     return res;
 }
 
-int32_t hdc2080_read_temperature (float* temperature_c)
+int8_t hdc2080_read_temperature (float* temperature_c)
 {
     uint16_t raw = 0U;
     int32_t status;
@@ -108,7 +105,7 @@ int32_t hdc2080_read_temperature (float* temperature_c)
     return 0;
 }
 
-int32_t hdc2080_read_humidity (float* humidity_rh)
+int8_t hdc2080_read_humidity (float* humidity_rh)
 {
     uint16_t raw = 0U;
     int32_t status; 
@@ -128,7 +125,7 @@ int32_t hdc2080_read_humidity (float* humidity_rh)
     return 0;
 }
 
-int32_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh)
+int8_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh)
 {
     int32_t status = hdc2080_read_temperature(temperature_c);
 
@@ -140,12 +137,12 @@ int32_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh)
     return hdc2080_read_humidity(humidity_rh);
 }
 
-int32_t hdc2080_set_temperature_offset (uint8_t offset_bits)
+int8_t hdc2080_set_temperature_offset (uint8_t offset_bits)
 {
     return hdc2080_i2c_write_data(HDC2080_REG_TEMP_OFFSET, offset_bits);
 }
 
-int32_t hdc2080_get_temperature_offset (uint8_t* offset_bits)
+int8_t hdc2080_get_temperature_offset (uint8_t* offset_bits)
 {
     return hdc2080_i2c_read(HDC2080_REG_TEMP_OFFSET, offset_bits, 1);
 }
@@ -310,7 +307,7 @@ uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
 }
 
 /*** Local Functions *********************************************************/
-static int32_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count)
+static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count)
 {
     int32_t status = hdc2080_i2c_write_addr(reg);  // write only register address!
 
@@ -323,7 +320,7 @@ static int32_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count)
 	return (RETARGET_I2CWriteRead(HDC2080_I2C_ADDR, NULL, 0, p_value, count));
 }
 
-static int32_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value)
+static int8_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value)
 {
     uint8_t buf[2U];
 
@@ -333,7 +330,7 @@ static int32_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value)
     return(RETARGET_I2CWriteRead(HDC2080_I2C_ADDR, buf, sizeof(buf), NULL, 0));
 }
 
-static int32_t hdc2080_i2c_write_addr(uint8_t addr)
+static int8_t hdc2080_i2c_write_addr(uint8_t addr)
 {
     uint8_t wr_addr = addr;
     
