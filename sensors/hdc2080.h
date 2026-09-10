@@ -14,9 +14,7 @@ int8_t hdc2080_trigger_measurement (void);
 int8_t hdc2080_read_temperature (float* temperature_c);
 int8_t hdc2080_read_humidity (float* humidity_rh);
 int8_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh);
-int8_t hdc2080_set_temperature_offset (uint8_t offset_bits);
-int8_t hdc2080_get_temperature_offset (uint8_t *offset_bits);
-uint8_t hdc2080_celsius_to_offset_bits (float offset_c);
-float   hdc2080_offset_bits_to_celsius (uint8_t offset_bits);
+int8_t hdc2080_set_temperature_offset (float offset_c);
+int8_t hdc2080_get_temperature_offset (float* offset_c);
 
 #endif /* HDC2080_H */

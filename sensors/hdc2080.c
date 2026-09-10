@@ -50,6 +50,8 @@
 
 /*** Local Function Prototypes ***********************************************/
 
+static float hdc2080_offset_bits_to_celsius(uint8_t bits);
+static uint8_t hdc2080_celsius_to_offset_bits(float offset_c);
 static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count);
 static int8_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value);
 static int8_t hdc2080_i2c_write_addr(uint8_t addr);
@@ -266,49 +268,51 @@ static uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
     best_mask = 0U;
 
     /* Option 1: use only positive bits (for small negative offsets) */
-    float rem;
-    uint8_t m;
-
-    rem = offset_c;
-    m = 0U;
-
-    for (i = 1; i < 8; i++)
     {
-        if (rem >= values[i])
+        float rem;
+        uint8_t m;
+
+        rem = offset_c;
+        m = 0U;
+
+        for (i = 1; i < 8; i++)
         {
-            m |= bits[i];
-            rem -= values[i];
+            if (rem >= values[i])
+            {
+                m |= bits[i];
+                rem -= values[i];
+            }
+        }
+
+        if (fabsf(rem) < fabsf(best_error))
+        {
+            best_error = rem;
+            best_mask = m;
         }
     }
-
-    if (fabsf(rem) < fabsf(best_error))
-    {
-        best_error = rem;
-        best_mask = m;
-    }
-
     /* Option 2: use -20.62 plus positive bits */
-    float rem;
-    uint8_t m;
-
-    rem = offset_c + 20.62f;
-    m = HDC2080_BIT_TEMP_OFFSET_MINUS_2062;
-
-    for (i = 1; i < 8; i++)
     {
-        if (rem >= values[i])
+        float rem;
+        uint8_t m;
+
+        rem = offset_c + 20.62f;
+        m = HDC2080_BIT_TEMP_OFFSET_MINUS_2062;
+
+        for (i = 1; i < 8; i++)
         {
-            m |= bits[i];
-            rem -= values[i];
+            if (rem >= values[i])
+            {
+                m |= bits[i];
+                rem -= values[i];
+            }
+        }
+
+        if (fabsf(rem) < fabsf(best_error))
+        {
+            best_error = rem;
+            best_mask = m;
         }
     }
-
-    if (fabsf(rem) < fabsf(best_error))
-    {
-        best_error = rem;
-        best_mask = m;
-    }
-
     return best_mask;
 }
 
