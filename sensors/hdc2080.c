@@ -137,17 +137,29 @@ int8_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh)
     return hdc2080_read_humidity(humidity_rh);
 }
 
-int8_t hdc2080_set_temperature_offset (uint8_t offset_bits)
+int8_t hdc2080_set_temperature_offset (float offset_c)
 {
+    uint8_t offset_bits;
+    offset_bits = hdc2080_celsius_to_offset_bits(offset_c);
     return hdc2080_i2c_write_data(HDC2080_REG_TEMP_OFFSET, offset_bits);
 }
 
-int8_t hdc2080_get_temperature_offset (uint8_t* offset_bits)
+int8_t hdc2080_get_temperature_offset (float* offset_c)
 {
-    return hdc2080_i2c_read(HDC2080_REG_TEMP_OFFSET, offset_bits, 1);
+    uint8_t offset_bits;
+    int8_t result;
+
+    result = hdc2080_i2c_read(HDC2080_REG_TEMP_OFFSET, &offset_bits, 1);
+    if (0 == result)
+    {
+        *offset_c = hdc2080_offset_bits_to_celsius(offset_bits);
+    }
+    return result;
 }
 
-float hdc2080_offset_bits_to_celsius(uint8_t bits)
+/*** Local Functions *********************************************************/
+
+static float hdc2080_offset_bits_to_celsius(uint8_t bits)
 {
     float offset;
 
@@ -189,7 +201,7 @@ float hdc2080_offset_bits_to_celsius(uint8_t bits)
     return offset;
 }
 
-uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
+static uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
 {
     /* Table 8-24 values, sorted from largest magnitude to smallest */
     const float values[8] =
@@ -247,66 +259,59 @@ uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
     /* Negative offset but not below -20.62:
      * Try combining -20.62 with positive bits to approximate target.
      */
+    float best_error;
+    uint8_t best_mask;
+
+    best_error = 1000.0f;
+    best_mask = 0U;
+
+    /* Option 1: use only positive bits (for small negative offsets) */
+    float rem;
+    uint8_t m;
+
+    rem = offset_c;
+    m = 0U;
+
+    for (i = 1; i < 8; i++)
     {
-        float best_error;
-        uint8_t best_mask;
-
-        best_error = 1000.0f;
-        best_mask = 0U;
-
-        /* Option 1: use only positive bits (for small negative offsets) */
+        if (rem >= values[i])
         {
-            float rem;
-            uint8_t m;
-
-            rem = offset_c;
-            m = 0U;
-
-            for (i = 1; i < 8; i++)
-            {
-                if (rem >= values[i])
-                {
-                    m |= bits[i];
-                    rem -= values[i];
-                }
-            }
-
-            if (fabsf(rem) < fabsf(best_error))
-            {
-                best_error = rem;
-                best_mask = m;
-            }
+            m |= bits[i];
+            rem -= values[i];
         }
-
-        /* Option 2: use -20.62 plus positive bits */
-        {
-            float rem;
-            uint8_t m;
-
-            rem = offset_c + 20.62f;
-            m = HDC2080_BIT_TEMP_OFFSET_MINUS_2062;
-
-            for (i = 1; i < 8; i++)
-            {
-                if (rem >= values[i])
-                {
-                    m |= bits[i];
-                    rem -= values[i];
-                }
-            }
-
-            if (fabsf(rem) < fabsf(best_error))
-            {
-                best_error = rem;
-                best_mask = m;
-            }
-        }
-
-        return best_mask;
     }
+
+    if (fabsf(rem) < fabsf(best_error))
+    {
+        best_error = rem;
+        best_mask = m;
+    }
+
+    /* Option 2: use -20.62 plus positive bits */
+    float rem;
+    uint8_t m;
+
+    rem = offset_c + 20.62f;
+    m = HDC2080_BIT_TEMP_OFFSET_MINUS_2062;
+
+    for (i = 1; i < 8; i++)
+    {
+        if (rem >= values[i])
+        {
+            m |= bits[i];
+            rem -= values[i];
+        }
+    }
+
+    if (fabsf(rem) < fabsf(best_error))
+    {
+        best_error = rem;
+        best_mask = m;
+    }
+
+    return best_mask;
 }
 
-/*** Local Functions *********************************************************/
 static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count)
 {
     int32_t status = hdc2080_i2c_write_addr(reg);  // write only register address!
