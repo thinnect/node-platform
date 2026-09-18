@@ -28,6 +28,7 @@
 #define HDC2080_REG_HUM_LOW           (0x02)
 #define HDC2080_REG_HUM_HIGH          (0x03)
 #define HDC2080_REG_TEMP_OFFSET       (0x08)
+#define HDC2080_REG_HUM_OFFSET        (0x09)
 #define HDC2080_REG_CONFIG            (0x0E)
 #define HDC2080_REG_MEASUREMENT       (0x0F)
 #define HDC2080_REG_MANUFACTURER_LOW  (0xFC)
@@ -48,10 +49,22 @@
 #define HDC2080_BIT_TEMP_OFFSET_PLUS_0032  (0x01U << 1)  // +0.32 °C
 #define HDC2080_BIT_TEMP_OFFSET_PLUS_0016  (0x01U << 0)  // +0.16 °C
 
+/* Humidity Offset Adjustment (Table 8-6-10) */
+#define HDC2080_BIT_HUM_OFFSET_MINUS_25     (0x01U << 7)  /* –25.0 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_125     (0x01U << 6)  /* +12.5 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_63      (0x01U << 5)  /* +6.3 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_31      (0x01U << 4)  /* +3.1 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_16      (0x01U << 3)  /* +1.6 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_08      (0x01U << 2)  /* +0.8 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_04      (0x01U << 1)  /* +0.4 %RH */
+#define HDC2080_BIT_HUM_OFFSET_PLUS_02      (0x01U << 0)  /* +0.2 %RH */
+
 /*** Local Function Prototypes ***********************************************/
 
 static float hdc2080_offset_bits_to_celsius(uint8_t bits);
 static uint8_t hdc2080_celsius_to_offset_bits(float offset_c);
+static float hdc2080_humidity_offset_bits_to_percent (uint8_t bits);
+static uint8_t hdc2080_percent_to_humidity_offset_bits(float offset_rh);
 static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count);
 static int8_t hdc2080_i2c_write_data(uint8_t reg, uint8_t value);
 static int8_t hdc2080_i2c_write_addr(uint8_t addr);
@@ -152,9 +165,29 @@ int8_t hdc2080_get_temperature_offset (float* offset_c)
     int8_t result;
 
     result = hdc2080_i2c_read(HDC2080_REG_TEMP_OFFSET, &offset_bits, 1);
-    if (0 == result)
+    if ((0 == result) && (NULL != offset_c))
     {
         *offset_c = hdc2080_offset_bits_to_celsius(offset_bits);
+    }
+    return result;
+}
+
+int8_t hdc2080_set_humidity_offset (float offset_c)
+{
+    uint8_t offset_bits;
+    offset_bits = hdc2080_percent_to_humidity_offset_bits(offset_c);
+    return hdc2080_i2c_write_data(HDC2080_REG_HUM_OFFSET, offset_bits);
+}
+
+int8_t hdc2080_get_humidity_offset (float* offset_c)
+{
+    uint8_t offset_bits;
+    int8_t result;
+
+    result = hdc2080_i2c_read(HDC2080_REG_HUM_OFFSET, &offset_bits, 1);
+    if ((0 == result) && (NULL != offset_c))
+    {
+        *offset_c = hdc2080_humidity_offset_bits_to_percent(offset_bits);
     }
     return result;
 }
@@ -314,6 +347,157 @@ static uint8_t hdc2080_celsius_to_offset_bits(float offset_c)
         }
     }
     return best_mask;
+}
+
+static float hdc2080_humidity_offset_bits_to_percent (uint8_t bits)
+{
+    float offset;
+
+    offset = 0.0f;
+
+    if (bits & HDC2080_BIT_HUM_OFFSET_MINUS_25)
+    {
+        offset -= 25.0f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_125)
+    {
+        offset += 12.5f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_63)
+    {
+        offset += 6.3f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_31)
+    {
+        offset += 3.1f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_16)
+    {
+        offset += 1.6f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_08)
+    {
+        offset += 0.8f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_04)
+    {
+        offset += 0.4f;
+    }
+    if (bits & HDC2080_BIT_HUM_OFFSET_PLUS_02)
+    {
+        offset += 0.2f;
+    }
+
+    return offset;
+}
+
+static uint8_t hdc2080_percent_to_humidity_offset_bits(float offset_rh)
+{
+    const float values[8] =
+    {
+        -25.0f,   /* bit 7 */
+        +12.5f,   /* bit 6 */
+        +6.3f,    /* bit 5 */
+        +3.1f,    /* bit 4 */
+        +1.6f,    /* bit 3 */
+        +0.8f,    /* bit 2 */
+        +0.4f,    /* bit 1 */
+        +0.2f     /* bit 0 */
+    };
+
+    const uint8_t bits[8] =
+    {
+        HDC2080_BIT_HUM_OFFSET_MINUS_25,
+        HDC2080_BIT_HUM_OFFSET_PLUS_125,
+        HDC2080_BIT_HUM_OFFSET_PLUS_63,
+        HDC2080_BIT_HUM_OFFSET_PLUS_31,
+        HDC2080_BIT_HUM_OFFSET_PLUS_16,
+        HDC2080_BIT_HUM_OFFSET_PLUS_08,
+        HDC2080_BIT_HUM_OFFSET_PLUS_04,
+        HDC2080_BIT_HUM_OFFSET_PLUS_02
+    };
+
+    float remaining;
+    uint8_t mask;
+    int i;
+
+    remaining = offset_rh;
+    mask = 0U;
+
+    if (offset_rh <= -25.0f)
+    {
+        return HDC2080_BIT_HUM_OFFSET_MINUS_25;
+    }
+
+    if (offset_rh > 0.0f)
+    {
+        for (i = 1; i < 8; i++)
+        {
+            if (remaining >= values[i])
+            {
+                mask |= bits[i];
+                remaining -= values[i];
+            }
+        }
+
+        return mask;
+    }
+
+    {
+        float best_error;
+        uint8_t best_mask;
+
+        best_error = 1000.0f;
+        best_mask = 0U;
+
+        {
+            float rem;
+            uint8_t m;
+
+            rem = offset_rh;
+            m = 0U;
+
+            for (i = 1; i < 8; i++)
+            {
+                if (rem >= values[i])
+                {
+                    m |= bits[i];
+                    rem -= values[i];
+                }
+            }
+
+            if (fabsf(rem) < fabsf(best_error))
+            {
+                best_error = rem;
+                best_mask = m;
+            }
+        }
+
+        {
+            float rem;
+            uint8_t m;
+
+            rem = offset_rh + 25.0f;
+            m = HDC2080_BIT_HUM_OFFSET_MINUS_25;
+
+            for (i = 1; i < 8; i++)
+            {
+                if (rem >= values[i])
+                {
+                    m |= bits[i];
+                    rem -= values[i];
+                }
+            }
+
+            if (fabsf(rem) < fabsf(best_error))
+            {
+                best_error = rem;
+                best_mask = m;
+            }
+        }
+
+        return best_mask;
+    }
 }
 
 static int8_t hdc2080_i2c_read(uint8_t reg, uint8_t* p_value, uint8_t count)

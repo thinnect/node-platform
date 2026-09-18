@@ -16,5 +16,7 @@ int8_t hdc2080_read_humidity (float* humidity_rh);
 int8_t hdc2080_read_temp_hum (float* temperature_c, float* humidity_rh);
 int8_t hdc2080_set_temperature_offset (float offset_c);
 int8_t hdc2080_get_temperature_offset (float* offset_c);
+int8_t hdc2080_set_humidity_offset (float offset_c);
+int8_t hdc2080_get_humidity_offset (float* offset_c);
 
 #endif /* HDC2080_H */
